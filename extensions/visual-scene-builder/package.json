@@ -1,0 +1,27 @@
+{
+  "package_version": 2,
+  "version": "1.0.0",
+  "name": "visual-scene-builder",
+  "description": "构建 Crossword Quest 编辑器可视化场景",
+  "main": "./dist/main.js",
+  "contributions": {
+    "scene": {
+      "script": "./dist/scene.js"
+    },
+    "menu": [
+      {
+        "path": "i18n:menu.extension",
+        "label": "构建试玩可视化场景",
+        "message": "build-visual-scene"
+      }
+    ],
+    "messages": {
+      "build-visual-scene": {
+        "methods": [
+          "buildVisualScene"
+        ]
+      }
+    }
+  },
+  "editor": ">=3.8.0"
+}
