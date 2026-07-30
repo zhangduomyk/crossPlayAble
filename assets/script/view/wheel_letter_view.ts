@@ -1,4 +1,15 @@
-import { _decorator, Color, Component, Label, Node, Tween, Vec3, tween } from "cc";
+import {
+    _decorator,
+    Color,
+    Component,
+    Graphics,
+    Label,
+    Node,
+    Sprite,
+    Tween,
+    Vec3,
+    tween,
+} from "cc";
 
 /** Cocos 装饰器工具。 */
 const { ccclass, property } = _decorator;
@@ -22,16 +33,43 @@ export class WheelLetterView extends Component {
         this.letterIndex = letterIndex;
         this.node.active = true;
         this.node.setPosition(position);
+        this.ensureHighlightCircle();
         this.setSelected(false);
         if (this.letterLabel) {
             this.letterLabel.string = letter;
         }
     }
 
+    /** 配置蓝色选中圆 Sprite，并关闭未稳定进入渲染队列的矢量方案。 */
+    private ensureHighlightCircle(): void {
+        if (!this.highlightNode) {
+            return;
+        }
+
+        /** 蓝色选中圆图片组件。 */
+        const highlightSprite: Sprite | null = this.highlightNode.getComponent(Sprite);
+        if (highlightSprite) {
+            highlightSprite.enabled = true;
+            highlightSprite.color = new Color(24, 125, 174, 255);
+            highlightSprite.type = Sprite.Type.SIMPLE;
+            highlightSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        }
+        /** 旧矢量选中圆组件。 */
+        const highlightGraphics: Graphics | null = this.highlightNode.getComponent(Graphics);
+        if (highlightGraphics) {
+            highlightGraphics.enabled = false;
+        }
+    }
+
     /** 设置字母是否处于选中状态。 */
     public setSelected(selected: boolean): void {
         if (this.highlightNode) {
-            this.highlightNode.active = selected;
+            if (selected) {
+                this.highlightNode.active = true;
+                this.ensureHighlightCircle();
+            } else {
+                this.highlightNode.active = false;
+            }
         }
         if (this.letterLabel) {
             this.letterLabel.color = selected
