@@ -40,7 +40,7 @@ export class WheelLetterView extends Component {
         }
     }
 
-    /** 配置蓝色选中圆 Sprite，并关闭未稳定进入渲染队列的矢量方案。 */
+    /** 配置深绿色选中圆 Sprite，并关闭未稳定进入渲染队列的矢量方案。 */
     private ensureHighlightCircle(): void {
         if (!this.highlightNode) {
             return;
@@ -50,7 +50,7 @@ export class WheelLetterView extends Component {
         const highlightSprite: Sprite | null = this.highlightNode.getComponent(Sprite);
         if (highlightSprite) {
             highlightSprite.enabled = true;
-            highlightSprite.color = new Color(24, 125, 174, 255);
+            highlightSprite.color = new Color(29, 64, 55, 255);
             highlightSprite.type = Sprite.Type.SIMPLE;
             highlightSprite.sizeMode = Sprite.SizeMode.CUSTOM;
         }
@@ -80,7 +80,7 @@ export class WheelLetterView extends Component {
         this.node.setScale(Vec3.ONE);
         if (selected) {
             tween(this.node)
-                .to(0.08, { scale: new Vec3(1.08, 1.08, 1) })
+                .to(0.08, { scale: new Vec3(1.2, 1.2, 1) })
                 .start();
         }
     }

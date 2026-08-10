@@ -1,8 +1,11 @@
 import {
     _decorator,
+    AudioClip,
+    AudioSource,
     Color,
     Component,
     EventTouch,
+    Font,
     Graphics,
     HorizontalTextAlignment,
     Label,
@@ -17,6 +20,7 @@ import {
     UIOpacity,
     Vec3,
     VerticalTextAlignment,
+    instantiate,
     resources,
     tween,
     view,
@@ -39,20 +43,60 @@ const { ccclass, property } = _decorator;
 /** UI 默认使用的二维渲染层。 */
 const UI_LAYER: number = Layers.Enum.UI_2D;
 
-/** 游戏背景颜色。 */
-const BACKGROUND_COLOR: Color = new Color(0, 0, 0, 255);
+/** 森林背景资源尚未加载时使用的后备颜色。 */
+const BACKGROUND_COLOR: Color = new Color(88, 105, 87, 255);
 
 /** 普通未填写字格颜色。 */
-const SLOT_COLOR: Color = new Color(57, 57, 57, 255);
+const SLOT_COLOR: Color = new Color(248, 247, 238, 255);
 
 /** 当前步骤未填写字格颜色。 */
-const ACTIVE_SLOT_COLOR: Color = new Color(103, 73, 75, 255);
+const ACTIVE_SLOT_COLOR: Color = new Color(248, 247, 238, 255);
 
 /** 已填写字格颜色。 */
-const FILLED_SLOT_COLOR: Color = new Color(250, 250, 250, 255);
+const FILLED_SLOT_COLOR: Color = new Color(82, 145, 58, 255);
 
-/** 字母连线、选中圆和组合横条使用的原型蓝色。 */
-const SELECTION_COLOR: Color = new Color(24, 125, 174, 255);
+/** 字母连线、选中圆和组合横条使用的深绿色。 */
+const SELECTION_COLOR: Color = new Color(29, 64, 55, 255);
+
+/** 空字格描边使用的森林灰绿色。 */
+const SLOT_BORDER_COLOR: Color = new Color(119, 141, 111, 255);
+
+/** 错误单词触发的红色边缘闪光。 */
+const WRONG_FLASH_COLOR: Color = new Color(255, 80, 80, 230);
+
+/** 重复词或收藏词触发的黄色边缘闪光。 */
+const REPEAT_FLASH_COLOR: Color = new Color(255, 215, 55, 230);
+
+/** 玩家连线和引导演示统一使用的加粗线宽。 */
+const TRACE_LINE_WIDTH: number = 20;
+
+/** 单个字谜单元格的二维网格坐标。 */
+interface CrosswordCellCoordinate {
+    /** 从左向右递增的列坐标。 */
+    readonly column: number;
+    /** 从上向下递增的行坐标。 */
+    readonly row: number;
+}
+
+/** 单词在字谜棋盘中的逐字坐标。 */
+interface CrosswordWordLayout {
+    /** 当前布局对应的单词。 */
+    readonly word: string;
+    /** 单词每个字符对应的棋盘坐标。 */
+    readonly cells: readonly CrosswordCellCoordinate[];
+}
+
+/** 与需求稿一致的八个单词字谜布局。 */
+const CROSSWORD_LAYOUT: readonly CrosswordWordLayout[] = [
+    { word: "FEST", cells: [{ column: 0, row: 0 }, { column: 0, row: 1 }, { column: 0, row: 2 }, { column: 0, row: 3 }] },
+    { word: "SOFT", cells: [{ column: 0, row: 2 }, { column: 1, row: 2 }, { column: 2, row: 2 }, { column: 3, row: 2 }] },
+    { word: "FOREST", cells: [{ column: 3, row: 0 }, { column: 4, row: 0 }, { column: 5, row: 0 }, { column: 6, row: 0 }, { column: 7, row: 0 }, { column: 8, row: 0 }] },
+    { word: "FORTE", cells: [{ column: 5, row: -2 }, { column: 5, row: -1 }, { column: 5, row: 0 }, { column: 5, row: 1 }, { column: 5, row: 2 }] },
+    { word: "FORES", cells: [{ column: 1, row: 4 }, { column: 2, row: 4 }, { column: 3, row: 4 }, { column: 4, row: 4 }, { column: 5, row: 4 }] },
+    { word: "FETOR", cells: [{ column: 3, row: 0 }, { column: 3, row: 1 }, { column: 3, row: 2 }, { column: 3, row: 3 }, { column: 3, row: 4 }] },
+    { word: "FORT", cells: [{ column: 1, row: 4 }, { column: 1, row: 5 }, { column: 1, row: 6 }, { column: 1, row: 7 }] },
+    { word: "REFS", cells: [{ column: 1, row: 6 }, { column: 2, row: 6 }, { column: 3, row: 6 }, { column: 4, row: 6 }] },
+];
 
 /** 游戏初始界面组件，负责创建素材节点并处理横竖屏布局。 */
 @ccclass("PlayableGameView")
@@ -118,6 +162,72 @@ export class PlayableGameView extends Component {
     /** 各待填单词行的发光框节点。 */
     private readonly wordGlowNodes: Node[] = [];
 
+    /** 运行时创建的唯一字谜单元格，键格式为“列,行”。 */
+    private readonly crosswordCells: Map<string, WordSlotView> = new Map();
+
+    /** 唯一字谜单元格对应的网格坐标。 */
+    private readonly crosswordCoordinates: Map<string, CrosswordCellCoordinate> = new Map();
+
+    /** 每个棋盘单词的落点中心。 */
+    private readonly wordTargetPositions: Vec3[] = [];
+
+    /** 森林背景精灵节点。 */
+    private backgroundSpriteNode: Node | null = null;
+
+    /** 两张循环平移的雾层节点。 */
+    private readonly fogNodes: Node[] = [];
+
+    /** 当前雾层横向循环偏移。 */
+    private fogOffset: number = 0;
+
+    /** 当前雾层单张循环跨度。 */
+    private fogSpan: number = 1200;
+
+    /** 左上角倒计时根节点。 */
+    private clockNode: Node | null = null;
+
+    /** 左上角倒计时数字标签。 */
+    private clockLabel: Label | null = null;
+
+    /** 红黄边缘闪光节点。 */
+    private feedbackFlashNode: Node | null = null;
+
+    /** 红黄边缘闪光绘图组件。 */
+    private feedbackFlashGraphics: Graphics | null = null;
+
+    /** 背景音乐播放器。 */
+    private backgroundAudioSource: AudioSource | null = null;
+
+    /** 短音效播放器。 */
+    private effectAudioSource: AudioSource | null = null;
+
+    /** 已加载的背景音乐。 */
+    private backgroundMusicClip: AudioClip | null = null;
+
+    /** 已加载的点击音效。 */
+    private tapAudioClip: AudioClip | null = null;
+
+    /** 已加载的正确填词音效。 */
+    private correctAudioClip: AudioClip | null = null;
+
+    /** 已加载的错误填词音效。 */
+    private wrongAudioClip: AudioClip | null = null;
+
+    /** 已加载的重复填词音效。 */
+    private repeatAudioClip: AudioClip | null = null;
+
+    /** 玩家是否已经触发首次有效交互。 */
+    private hasStartedByInteraction: boolean = false;
+
+    /** 当前倒计时剩余秒数。 */
+    private remainingSeconds: number = PLAYABLE_CONFIG.countdownSeconds;
+
+    /** 倒计时最后五秒的抖动动画是否已经启动。 */
+    private hasStartedClockWarning: boolean = false;
+
+    /** 已经正确填入或初始填入的单词集合。 */
+    private readonly completedWords: Set<string> = new Set(PLAYABLE_CONFIG.completedWords);
+
     /** 字盘连线绘图组件。 */
     @property(Graphics)
     private traceGraphics: Graphics | null = null;
@@ -132,11 +242,11 @@ export class PlayableGameView extends Component {
     @property(Label)
     private selectedWordLabel: Label | null = null;
 
-    /** 字盘上方的蓝色组合横条节点。 */
+    /** 字盘上方的深绿色组合横条节点。 */
     @property(Node)
     private selectionBannerNode: Node | null = null;
 
-    /** 字盘上方蓝色组合横条的背景绘图组件。 */
+    /** 字盘上方深绿色组合横条的背景绘图组件。 */
     @property(Graphics)
     private selectionBannerGraphics: Graphics | null = null;
 
@@ -146,6 +256,21 @@ export class PlayableGameView extends Component {
 
     /** 当前引导手需要遍历的目标单词。 */
     private currentGuideTargetWord: string = "";
+
+    /** 引导手是否正在模拟真实连线。 */
+    private isGuidePreviewAnimating: boolean = false;
+
+    /** 当前引导路径经过的字母中心位置。 */
+    private readonly guideLetterCenterPositions: Vec3[] = [];
+
+    /** 当前引导路径经过的字盘字母索引。 */
+    private readonly guideLetterIndices: number[] = [];
+
+    /** 当前引导手正在移动到的路径位置索引。 */
+    private guideTraceTargetIndex: number = 0;
+
+    /** 引导手节点中心相对指尖热点的位置补偿。 */
+    private readonly guideHandCenterOffset: Vec3 = new Vec3();
 
     /** PSD 下载箭头节点。 */
     @property(Node)
@@ -182,6 +307,9 @@ export class PlayableGameView extends Component {
     protected onLoad(): void {
         initializePlayablePlatform();
         this.bindEditorInterface();
+        this.createRuntimeVisuals();
+        this.setupAudio();
+        this.applySuppliedFont();
         this.applyResponsiveLayout();
         this.bindGameplayInput();
         this.startInitialAnimations();
@@ -192,7 +320,30 @@ export class PlayableGameView extends Component {
     protected onDestroy(): void {
         view.off("canvas-resize", this.applyResponsiveLayout, this);
         this.unschedule(this.handleGuideIdleTimeout);
+        this.unschedule(this.handleCountdownTick);
+        this.backgroundAudioSource?.stop();
         this.unbindGameplayInput();
+    }
+
+    /** 每帧推动双雾层平移，保持横竖屏都能无缝循环。 */
+    protected update(deltaTime: number): void {
+        if (this.isEndCardVisible) {
+            return;
+        }
+
+        if (this.fogNodes.length >= 2) {
+            /** 当前帧按每秒十八逻辑像素计算的雾层位移。 */
+            const fogMovement: number = 18 * deltaTime;
+            this.fogOffset -= fogMovement;
+            if (this.fogOffset <= -this.fogSpan) {
+                this.fogOffset += this.fogSpan;
+            }
+            this.fogNodes[0].setPosition(this.fogOffset, 0, 0);
+            this.fogNodes[1].setPosition(this.fogOffset + this.fogSpan, 0, 0);
+        }
+        if (this.isGuidePreviewAnimating) {
+            this.redrawGuideTraceProgress();
+        }
     }
 
     /** 从 Inspector 拖拽引用初始化玩法缓存，不再在运行时创建基础 UI。 */
@@ -213,40 +364,7 @@ export class PlayableGameView extends Component {
         this.wordSlotLabels.length = 0;
         this.wordSlotBackgrounds.length = 0;
         this.wordGlowNodes.length = 0;
-        /** 棋盘中需要展示的全部单词。 */
-        const words: string[] = [
-            PLAYABLE_CONFIG.completedWord,
-            ...PLAYABLE_CONFIG.wordSteps.map((step: WordStepConfig): string => step.word),
-        ];
-        this.wordRowViews.forEach((rowView: WordRowView, rowIndex: number): void => {
-            /** 当前行目标单词。 */
-            const word: string = words[rowIndex] ?? "";
-            /** 当前行通过 Prefab 根节点解析出的字格视图。 */
-            const slotViews: WordSlotView[] = rowView.getSlotViews();
-            rowView.configure(word, rowIndex);
-            rowView.setGlowVisible(rowIndex === 1);
-            this.wordRowNodes.push(rowView.node);
-            this.wordSlotLabels.push(
-                slotViews.map((slot: WordSlotView): Label => slot.letterLabel!),
-            );
-            this.wordSlotBackgrounds.push(
-                slotViews.map((slot: WordSlotView): Sprite => slot.background!),
-            );
-            if (rowIndex > 0 && rowView.glowNode) {
-                this.wordGlowNodes.push(rowView.glowNode);
-            }
-            slotViews.forEach((slot: WordSlotView, letterIndex: number): void => {
-                /** 当前字格初始显示的字母。 */
-                const visibleLetter: string = rowIndex === 0 || letterIndex === 0
-                    ? (word[letterIndex] ?? "")
-                    : "";
-                /** 当前字格初始背景颜色。 */
-                const slotColor: Color = rowIndex === 0 || letterIndex === 0
-                    ? FILLED_SLOT_COLOR
-                    : (rowIndex === 1 ? ACTIVE_SLOT_COLOR : SLOT_COLOR);
-                slot.configure(slotColor, visibleLetter);
-            });
-        });
+        this.createCrosswordBoard();
 
         this.traceGraphics = this.letterWheelView.traceGraphics;
         this.guideHandNode = this.letterWheelView.guideHandNode;
@@ -264,11 +382,385 @@ export class PlayableGameView extends Component {
         });
         /** 第一关的字盘配置。 */
         const firstStep: WordStepConfig = PLAYABLE_CONFIG.wordSteps[0];
-        this.createWheelLetters(this.wheelNode, firstStep.wheelLetters, firstStep.word, true);
+        this.createWheelLetters(this.wheelNode, firstStep.wheelLetters, firstStep.word);
+        if (this.guideHandNode) {
+            this.guideHandNode.active = false;
+        }
+        this.traceGraphics?.clear();
         this.endCardNode && (this.endCardNode.active = false);
         this.selectionBannerNode && (this.selectionBannerNode.active = false);
+        /** 旧版蓝色组合词背景，需求仅保留根节点绘制的深绿色圆角背景。 */
+        const legacySelectionBackground: Node | null = this.selectionBannerNode
+            ?.getChildByName("SelectionBackground") ?? null;
+        if (legacySelectionBackground) {
+            legacySelectionBackground.active = false;
+        }
+        this.promptNode && (this.promptNode.active = false);
         this.downloadNode && (this.downloadNode.active = !shouldHidePlayableDownload());
         this.installPanelNode && (this.installPanelNode.active = !shouldHidePlayableDownload());
+    }
+
+    /** 使用现有字格 Prefab 实例构建需求稿中的交叉字谜棋盘。 */
+    private createCrosswordBoard(): void {
+        if (!this.boardNode) {
+            return;
+        }
+
+        /** 可供克隆的编辑器字格模板。 */
+        const slotTemplate: Node | undefined = this.wordRowViews[0]
+            ?.getSlotViews()[0]
+            ?.node;
+        if (!slotTemplate) {
+            console.error("[Playable] 未找到字格模板，无法创建交叉字谜棋盘。");
+            return;
+        }
+
+        this.crosswordCells.clear();
+        this.crosswordCoordinates.clear();
+        this.wordTargetPositions.length = 0;
+        this.wordRowViews.forEach((rowView: WordRowView): void => {
+            rowView.node.active = false;
+        });
+
+        /** 承载全部唯一字格的运行时棋盘根节点。 */
+        const crosswordRoot: Node = this.createUiNode("CrosswordGrid", this.boardNode, 520, 600);
+        /** 棋盘中按照需求顺序展示的全部单词。 */
+        const words: readonly string[] = [
+            ...PLAYABLE_CONFIG.completedWords,
+            ...PLAYABLE_CONFIG.wordSteps.map((step: WordStepConfig): string => step.word),
+        ];
+
+        words.forEach((word: string, wordIndex: number): void => {
+            /** 当前单词的固定字谜布局。 */
+            const wordLayout: CrosswordWordLayout | undefined = CROSSWORD_LAYOUT.find(
+                (layout: CrosswordWordLayout): boolean => layout.word === word,
+            );
+            if (!wordLayout) {
+                console.error(`[Playable] 缺少单词布局: ${word}`);
+                return;
+            }
+
+            /** 当前单词逐字对应的标签。 */
+            const labels: Label[] = [];
+            /** 当前单词逐字对应的背景。 */
+            const backgrounds: Sprite[] = [];
+            wordLayout.cells.forEach((coordinate: CrosswordCellCoordinate): void => {
+                /** 由坐标生成的唯一字格键。 */
+                const cellKey: string = this.getCrosswordCellKey(coordinate);
+                /** 复用交叉位置已有字格，否则从 Prefab 模板克隆。 */
+                let slotView: WordSlotView | undefined = this.crosswordCells.get(cellKey);
+                if (!slotView) {
+                    /** 新克隆的唯一字格根节点。 */
+                    const slotNode: Node = instantiate(slotTemplate);
+                    slotNode.name = `CrosswordCell_${coordinate.column}_${coordinate.row}`;
+                    slotNode.active = true;
+                    crosswordRoot.addChild(slotNode);
+                    slotView = slotNode.getComponent(WordSlotView) ?? undefined;
+                    if (!slotView?.background || !slotView.letterLabel) {
+                        slotNode.destroy();
+                        return;
+                    }
+                    slotView.configure(SLOT_COLOR, "");
+                    slotView.letterLabel.color = new Color(29, 64, 55, 255);
+                    this.createCrosswordCellBorder(slotNode);
+                    this.crosswordCells.set(cellKey, slotView);
+                    this.crosswordCoordinates.set(cellKey, coordinate);
+                }
+                if (slotView.background && slotView.letterLabel) {
+                    labels.push(slotView.letterLabel);
+                    backgrounds.push(slotView.background);
+                }
+            });
+            this.wordSlotLabels[wordIndex] = labels;
+            this.wordSlotBackgrounds[wordIndex] = backgrounds;
+            this.wordTargetPositions[wordIndex] = new Vec3();
+        });
+
+        PLAYABLE_CONFIG.completedWords.forEach((word: string, completedIndex: number): void => {
+            /** 初始完成单词对应的全部标签。 */
+            const labels: Label[] = this.wordSlotLabels[completedIndex] ?? [];
+            /** 初始完成单词对应的全部背景。 */
+            const backgrounds: Sprite[] = this.wordSlotBackgrounds[completedIndex] ?? [];
+            Array.from(word).forEach((letter: string, letterIndex: number): void => {
+                /** 当前初始完成字格标签。 */
+                const letterLabel: Label | undefined = labels[letterIndex];
+                /** 当前初始完成字格背景。 */
+                const slotBackground: Sprite | undefined = backgrounds[letterIndex];
+                if (!letterLabel || !slotBackground) {
+                    return;
+                }
+                letterLabel.string = letter;
+                letterLabel.color = new Color(255, 255, 255, 255);
+                this.setSlotColor(slotBackground, FILLED_SLOT_COLOR);
+            });
+        });
+    }
+
+    /** 将字谜坐标转换为唯一缓存键。 */
+    private getCrosswordCellKey(coordinate: CrosswordCellCoordinate): string {
+        return `${coordinate.column},${coordinate.row}`;
+    }
+
+    /** 为克隆字格增加与需求稿一致的细绿色圆角描边。 */
+    private createCrosswordCellBorder(slotNode: Node): void {
+        /** 字格描边子节点。 */
+        const borderNode: Node = this.createUiNode("CellBorder", slotNode, 50, 50);
+        /** 字格描边绘图组件。 */
+        const borderGraphics: Graphics = borderNode.addComponent(Graphics);
+        borderGraphics.strokeColor = SLOT_BORDER_COLOR;
+        borderGraphics.lineWidth = 2;
+        borderGraphics.roundRect(-24, -24, 48, 48, 7);
+        borderGraphics.stroke();
+        borderNode.setSiblingIndex(0);
+    }
+
+    /** 创建森林背景、循环雾、倒计时和边缘反馈等运行时视觉节点。 */
+    private createRuntimeVisuals(): void {
+        if (!this.layoutRoot) {
+            return;
+        }
+
+        this.backgroundGraphics && (this.backgroundGraphics.node.active = false);
+        this.backgroundSpriteNode = this.createSpriteNode(
+            "ForestBackground",
+            this.layoutRoot,
+            "playable/psd/forest-background/spriteFrame",
+            1200,
+            1200,
+        );
+        this.backgroundSpriteNode.setSiblingIndex(0);
+
+        this.fogNodes.length = 0;
+        for (let fogIndex: number = 0; fogIndex < 2; fogIndex += 1) {
+            /** 单张循环雾层节点。 */
+            const fogNode: Node = this.createSpriteNode(
+                `MovingFog_${fogIndex + 1}`,
+                this.layoutRoot,
+                "playable/psd/moving-fog/spriteFrame",
+                1200,
+                1200,
+            );
+            /** 雾层透明度组件。 */
+            const fogOpacity: UIOpacity = fogNode.addComponent(UIOpacity);
+            fogOpacity.opacity = 150;
+            fogNode.setSiblingIndex(fogIndex + 1);
+            this.fogNodes.push(fogNode);
+        }
+
+        this.createClockVisual();
+        this.createFeedbackFlashVisual();
+        this.applyLatestPsdSprites();
+        this.configureStaticLabels();
+        this.configureEndCardContent();
+    }
+
+    /** 隐藏旧文字标签并启用 PSD 原稿文案图片。 */
+    private configureStaticLabels(): void {
+        /** 不再使用的动态文案标签。 */
+        const promptLabel: Label | null = this.promptNode
+            ?.getChildByName("PromptLabel")
+            ?.getComponent(Label) ?? null;
+        if (promptLabel) {
+            promptLabel.node.active = false;
+        }
+        /** 用于显示 PSD 原稿文案的图片节点。 */
+        const promptImageNode: Node | null = this.promptNode
+            ?.getChildByName("PromptBackground") ?? null;
+        if (promptImageNode) {
+            promptImageNode.active = true;
+        }
+
+        /** 右下角安装按钮标签。 */
+        const installLabel: Label | null = this.installPanelNode
+            ?.getChildByName("InstallButton")
+            ?.getChildByName("InstallLabel")
+            ?.getComponent(Label) ?? null;
+        if (installLabel) {
+            installLabel.string = PLAYABLE_CONFIG.downloadButtonText;
+        }
+    }
+
+    /** 创建左上角白色闹钟轮廓与动态数字。 */
+    private createClockVisual(): void {
+        if (!this.layoutRoot) {
+            return;
+        }
+
+        this.clockNode = this.createUiNode("CountdownClock", this.layoutRoot, 112, 112);
+        /** 闹钟轮廓绘图组件。 */
+        const clockGraphics: Graphics = this.clockNode.addComponent(Graphics);
+        clockGraphics.strokeColor = new Color(255, 255, 255, 255);
+        clockGraphics.lineWidth = 6;
+        clockGraphics.circle(0, 0, 39);
+        clockGraphics.moveTo(-24, 31);
+        clockGraphics.lineTo(-41, 46);
+        clockGraphics.lineTo(-29, 51);
+        clockGraphics.moveTo(24, 31);
+        clockGraphics.lineTo(41, 46);
+        clockGraphics.lineTo(29, 51);
+        clockGraphics.moveTo(-22, -32);
+        clockGraphics.lineTo(-31, -46);
+        clockGraphics.moveTo(22, -32);
+        clockGraphics.lineTo(31, -46);
+        clockGraphics.stroke();
+
+        this.clockLabel = this.createLabel(
+            "CountdownLabel",
+            this.clockNode,
+            String(this.remainingSeconds),
+            42,
+            new Color(255, 255, 255, 255),
+            90,
+            70,
+        );
+        this.clockLabel.isBold = true;
+        this.clockLabel.outlineColor = new Color(35, 45, 38, 255);
+        this.clockLabel.outlineWidth = 3;
+    }
+
+    /** 创建覆盖全屏但默认透明的红黄边缘闪光节点。 */
+    private createFeedbackFlashVisual(): void {
+        if (!this.layoutRoot) {
+            return;
+        }
+
+        this.feedbackFlashNode = this.createUiNode("FeedbackFlash", this.layoutRoot, 1200, 720);
+        this.feedbackFlashGraphics = this.feedbackFlashNode.addComponent(Graphics);
+        /** 边缘闪光透明度组件。 */
+        const flashOpacity: UIOpacity = this.feedbackFlashNode.addComponent(UIOpacity);
+        flashOpacity.opacity = 0;
+        this.feedbackFlashNode.active = false;
+        this.feedbackFlashNode.setSiblingIndex(this.layoutRoot.children.length - 1);
+    }
+
+    /** 将最新版 PSD 中的主按钮、引导手和文案覆盖到现有编辑器节点。 */
+    private applyLatestPsdSprites(): void {
+        this.applySpriteResource(this.playNowNode, "playable/psd/play-now/spriteFrame");
+        this.applySpriteResource(this.guideHandNode, "playable/psd/guide-hand/spriteFrame");
+        /** PSD 原稿文案图片节点。 */
+        const promptImageNode: Node | null = this.promptNode
+            ?.getChildByName("PromptBackground") ?? null;
+        this.applySpriteResource(promptImageNode, "playable/psd/swipe-to-form-words/spriteFrame");
+        /** 清除旧背景节点的颜色，完整保留 PSD 文案颜色和描边。 */
+        const promptSprite: Sprite | null = promptImageNode?.getComponent(Sprite) ?? null;
+        if (promptSprite) {
+            promptSprite.color = new Color(255, 255, 255, 255);
+            promptSprite.type = Sprite.Type.SIMPLE;
+            promptSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        }
+    }
+
+    /** 配置结束页品牌名称、宣传语并移除旧搜索框装饰。 */
+    private configureEndCardContent(): void {
+        if (!this.endCardNode) {
+            return;
+        }
+
+        /** 结束页旧品牌面板。 */
+        const brandPanel: Node | null = this.endCardNode.getChildByName("BrandPanel");
+        /** 结束页品牌名称标签。 */
+        const brandLabel: Label | null = brandPanel
+            ?.getChildByName("BrandLabel")
+            ?.getComponent(Label) ?? null;
+        if (brandLabel) {
+            brandLabel.string = PLAYABLE_CONFIG.brand.gameName.toUpperCase();
+            brandLabel.color = new Color(255, 255, 255, 255);
+        }
+        brandPanel?.getChildByName("BrandGlow")?.destroy();
+        brandPanel?.getChildByName("BrandBackground")?.destroy();
+        brandPanel?.getChildByName("SearchIcon")?.destroy();
+
+        /** 结束页宣传语标签。 */
+        const taglineLabel: Label = this.createLabel(
+            "EndCardTagline",
+            this.endCardNode,
+            "The most beautiful\nword game!",
+            48,
+            new Color(255, 255, 255, 255),
+            620,
+            140,
+        );
+        taglineLabel.isBold = true;
+    }
+
+    /** 创建背景音乐与短音效播放器，并异步加载全部提供音频。 */
+    private setupAudio(): void {
+        if (!this.layoutRoot) {
+            return;
+        }
+
+        /** 音频播放器承载节点。 */
+        const audioNode: Node = new Node("PlayableAudio");
+        this.layoutRoot.addChild(audioNode);
+        this.backgroundAudioSource = audioNode.addComponent(AudioSource);
+        this.backgroundAudioSource.loop = true;
+        this.backgroundAudioSource.volume = 0.32;
+        this.effectAudioSource = audioNode.addComponent(AudioSource);
+        this.effectAudioSource.volume = 0.75;
+
+        this.loadAudioClip("playable/audio/bgm", (clip: AudioClip): void => {
+            this.backgroundMusicClip = clip;
+            if (this.hasStartedByInteraction) {
+                this.playBackgroundMusic();
+            }
+        });
+        this.loadAudioClip("playable/audio/tap", (clip: AudioClip): void => {
+            this.tapAudioClip = clip;
+        });
+        this.loadAudioClip("playable/audio/word", (clip: AudioClip): void => {
+            this.correctAudioClip = clip;
+        });
+        this.loadAudioClip("playable/audio/wordinvalid", (clip: AudioClip): void => {
+            this.wrongAudioClip = clip;
+        });
+        this.loadAudioClip("playable/audio/wordrepeat", (clip: AudioClip): void => {
+            this.repeatAudioClip = clip;
+        });
+    }
+
+    /** 按 resources 路径加载一个音频资源。 */
+    private loadAudioClip(resourcePath: string, onLoaded: (clip: AudioClip) => void): void {
+        resources.load(resourcePath, AudioClip, (error: Error | null, clip: AudioClip): void => {
+            if (error) {
+                console.warn(`[Playable] 音频加载失败: ${resourcePath}`, error);
+                return;
+            }
+            onLoaded(clip);
+        });
+    }
+
+    /** 为场景内需要动态生成的标签应用素材目录提供的粗体字体。 */
+    private applySuppliedFont(): void {
+        resources.load(
+            "playable/fonts/sf-ns-bold-g1",
+            Font,
+            (error: Error | null, font: Font): void => {
+                if (error || !this.layoutRoot) {
+                    console.warn("[Playable] 字体加载失败，继续使用系统字体。", error);
+                    return;
+                }
+                this.layoutRoot.getComponentsInChildren(Label).forEach((label: Label): void => {
+                    label.font = font;
+                });
+            },
+        );
+    }
+
+    /** 将指定 resources 精灵资源设置到已有节点。 */
+    private applySpriteResource(targetNode: Node | null, resourcePath: string): void {
+        /** 目标节点上的精灵组件。 */
+        const targetSprite: Sprite | null = targetNode?.getComponent(Sprite) ?? null;
+        if (!targetSprite) {
+            return;
+        }
+        resources.load(resourcePath, SpriteFrame, (error: Error | null, frame: SpriteFrame): void => {
+            if (error) {
+                console.warn(`[Playable] 图片加载失败: ${resourcePath}`, error);
+                return;
+            }
+            targetSprite.spriteFrame = frame;
+            targetSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        });
     }
 
     /** 根据当前设备方向应用横屏或竖屏布局。 */
@@ -304,6 +796,8 @@ export class PlayableGameView extends Component {
         this.layoutRoot.setPosition(Vec3.ZERO);
         this.layoutRoot.setScale(Vec3.ONE);
         this.redrawBackground(designWidth, designHeight);
+        this.applyBackdropLayout(designWidth, designHeight);
+        this.redrawFeedbackFlash(designWidth, designHeight);
 
         if (isLandscape) {
             this.applyLandscapePositions();
@@ -314,59 +808,59 @@ export class PlayableGameView extends Component {
 
     /** 应用横屏节点位置。 */
     private applyLandscapePositions(): void {
-        this.promptNode?.setPosition(0, 10, 0);
+        this.promptNode?.setPosition(270, 245, 0);
         this.promptNode?.setScale(1, 1, 1);
-        this.applyPromptFontSize(52);
+        this.applyPromptImageSize(620, 92);
         this.downloadNode?.setPosition(450, -230, 0);
         this.downloadNode?.setScale(1, 1, 1);
         this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(true);
-        this.applyWordBoardLayout(54, 7, 38, 70, 74);
-        this.boardNode?.setPosition(-250, -20, 0);
+        this.applyCrosswordBoardLayout(43, 4, 31);
+        this.boardNode?.setPosition(-300, -5, 0);
         this.boardNode?.setScale(1, 1, 1);
-        this.wheelNode?.setPosition(260, -20, 0);
+        this.wheelNode?.setPosition(270, -35, 0);
         this.wheelNode?.setScale(1, 1, 1);
-        this.applyWheelLetterFontSize(76);
+        this.applyWheelLetterFontSize(72);
         this.guideHandNode?.setScale(1, 1, 1);
-        this.selectionBannerNode?.setPosition(260, 240, 0);
+        this.selectionBannerNode?.setPosition(270, 242, 0);
         this.selectionBannerNode?.setScale(1, 1, 1);
+        this.clockNode?.setPosition(-530, 290, 0);
         this.applyLandscapeEndCardPositions();
     }
 
     /** 应用竖屏节点位置。 */
     private applyPortraitPositions(): void {
-        this.promptNode?.setPosition(0, 5, 0);
+        this.promptNode?.setPosition(0, -50, 0);
         this.promptNode?.setScale(1.05, 1.05, 1);
-        this.applyPromptFontSize(72);
-        this.downloadNode?.setPosition(212, -570, 0);
+        this.applyPromptImageSize(560, 83);
+        this.downloadNode?.setPosition(270, -550, 0);
         this.downloadNode?.setScale(1, 1, 1);
-        this.applyDownloadButtonSize(112, 112);
+        this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(false);
-        this.applyWordBoardLayout(60, 4, 48, 76, 80);
-        this.boardNode?.setPosition(0, 328, 0);
-        this.boardNode?.setScale(1.18, 1.18, 1);
-        this.wheelNode?.setPosition(0, -289, 0);
-        this.wheelNode?.setScale(1.22, 1.22, 1);
-        this.applyWheelLetterFontSize(88);
-        /** 轮盘整体放大时抵消引导手缩放，保持 PSD 手的目标尺寸。 */
-        const guideHandScale: number = 1 / 1.22;
+        this.applyCrosswordBoardLayout(64, 4, 46);
+        this.boardNode?.setPosition(0, 272, 0);
+        this.boardNode?.setScale(1, 1, 1);
+        this.wheelNode?.setPosition(0, -330, 0);
+        this.wheelNode?.setScale(0.96, 0.96, 1);
+        this.applyWheelLetterFontSize(92);
+        /** 抵消竖屏轮盘缩放，保持 PSD 手势图片的目标显示尺寸。 */
+        const guideHandScale: number = 1 / 0.96;
         this.guideHandNode?.setScale(guideHandScale, guideHandScale, 1);
-        this.selectionBannerNode?.setPosition(0, 10, 0);
+        this.selectionBannerNode?.setPosition(0, -25, 0);
         this.selectionBannerNode?.setScale(1, 1, 1);
+        this.clockNode?.setPosition(-271, 564, 0);
         this.applyPortraitEndCardPositions();
     }
 
-    /** 更新开场问题文案字号。 */
-    private applyPromptFontSize(fontSize: number): void {
-        /** 开场问题标签。 */
-        const promptLabel: Label | null = this.promptNode
-            ?.getChildByName("PromptLabel")
-            ?.getComponent(Label) ?? null;
-        if (!promptLabel) {
+    /** 按布局方向更新 PSD 引导文案图片尺寸。 */
+    private applyPromptImageSize(width: number, height: number): void {
+        /** 引导文案图片节点。 */
+        const promptImageNode: Node | null = this.promptNode
+            ?.getChildByName("PromptBackground") ?? null;
+        if (!promptImageNode) {
             return;
         }
-        promptLabel.fontSize = fontSize;
-        promptLabel.lineHeight = fontSize + 6;
+        promptImageNode.getComponent(UITransform)?.setContentSize(width, height);
     }
 
     /** 更新轮盘全部字符的字号。 */
@@ -377,71 +871,125 @@ export class PlayableGameView extends Component {
         });
     }
 
-    /** 按方向设置棋盘字格、字体、间距和行高。 */
-    private applyWordBoardLayout(
+    /** 按当前方向设置交叉字谜单元格尺寸、坐标和单词落点。 */
+    private applyCrosswordBoardLayout(
         slotSize: number,
         slotGap: number,
         fontSize: number,
-        rowStep: number,
-        rowHeight: number,
     ): void {
-        /** 棋盘显示的全部单词。 */
-        const words: string[] = [
-            PLAYABLE_CONFIG.completedWord,
-            ...PLAYABLE_CONFIG.wordSteps.map((step: WordStepConfig): string => step.word),
-        ];
-        /** 所有行共用的左侧对齐位置。 */
-        const rowLeft: number = -210;
-        this.wordRowViews.forEach((rowView: WordRowView, rowIndex: number): void => {
-            /** 当前行目标单词。 */
-            const word: string = words[rowIndex] ?? "";
-            /** 当前行按照目标间距计算的宽度。 */
-            const rowWidth: number = word.length * slotSize
-                + Math.max(0, word.length - 1) * slotGap;
-            /** 黄色选中框相对字格行增加的横向留边。 */
-            const selectionWidth: number = rowWidth + 48;
-            /** 黄色选中框相对字格行增加的纵向留边。 */
-            const selectionHeight: number = rowHeight + 16;
-            /** 当前行尺寸组件。 */
-            const rowTransform: UITransform = rowView.node.getComponent(UITransform)!;
-            rowTransform.setContentSize(selectionWidth, selectionHeight);
-            rowView.node.setPosition(
-                rowLeft + rowWidth / 2,
-                175 - rowIndex * rowStep,
+        /** 相邻字谜单元格中心之间的距离。 */
+        const cellStep: number = slotSize + slotGap;
+        /** 当前字谜网格的水平中心列。 */
+        const centerColumn: number = 4;
+        /** 当前字谜网格的垂直中心行。 */
+        const centerRow: number = 2.5;
+
+        this.crosswordCells.forEach((slotView: WordSlotView, cellKey: string): void => {
+            /** 当前唯一字格的网格坐标。 */
+            const coordinate: CrosswordCellCoordinate | undefined = this.crosswordCoordinates.get(cellKey);
+            if (!coordinate || !slotView.letterLabel || !slotView.background) {
+                return;
+            }
+            /** 当前字格根节点尺寸组件。 */
+            const slotTransform: UITransform = slotView.node.getComponent(UITransform)!;
+            /** 当前字格标签尺寸组件。 */
+            const labelTransform: UITransform = slotView.letterLabel.node.getComponent(UITransform)!;
+            slotTransform.setContentSize(slotSize, slotSize);
+            labelTransform.setContentSize(slotSize, slotSize);
+            slotView.background.sizeMode = Sprite.SizeMode.CUSTOM;
+            slotView.letterLabel.fontSize = fontSize;
+            slotView.letterLabel.lineHeight = fontSize + 5;
+            slotView.letterLabel.isBold = true;
+            slotView.node.setPosition(
+                (coordinate.column - centerColumn) * cellStep,
+                (centerRow - coordinate.row) * cellStep,
                 0,
             );
-            rowView.getSlotViews().forEach((slotView: WordSlotView, slotIndex: number): void => {
-                /** 当前字格根节点尺寸组件。 */
-                const slotTransform: UITransform = slotView.node.getComponent(UITransform)!;
-                /** 当前字格文字尺寸组件。 */
-                const labelTransform: UITransform = slotView.letterLabel!
-                    .node
-                    .getComponent(UITransform)!;
-                slotTransform.setContentSize(slotSize, slotSize);
-                labelTransform.setContentSize(slotSize, slotSize);
-                slotView.letterLabel!.fontSize = fontSize;
-                slotView.letterLabel!.lineHeight = fontSize + 6;
-                slotView.letterLabel!.isBold = true;
-                slotView.node.setPosition(
-                    -rowWidth / 2 + slotSize / 2 + slotIndex * (slotSize + slotGap),
-                    0,
-                    0,
+
+            /** 当前字格描边节点。 */
+            const borderNode: Node | null = slotView.node.getChildByName("CellBorder");
+            /** 当前字格描边绘图组件。 */
+            const borderGraphics: Graphics | null = borderNode?.getComponent(Graphics) ?? null;
+            borderNode?.getComponent(UITransform)?.setContentSize(slotSize, slotSize);
+            if (borderGraphics) {
+                borderGraphics.clear();
+                borderGraphics.strokeColor = SLOT_BORDER_COLOR;
+                borderGraphics.lineWidth = 2;
+                borderGraphics.roundRect(
+                    -slotSize / 2 + 1,
+                    -slotSize / 2 + 1,
+                    slotSize - 2,
+                    slotSize - 2,
+                    7,
                 );
-            });
-            if (rowView.glowNode) {
-                /** 当前行选中框尺寸组件。 */
-                const glowTransform: UITransform = rowView.glowNode.getComponent(UITransform)!;
-                glowTransform.setContentSize(selectionWidth, selectionHeight);
-                /** PSD 选中框精灵节点尺寸组件。 */
-                const selectionTransform: UITransform | null = rowView.glowNode
-                    .getChildByName("SelectionFrame")
-                    ?.getComponent(UITransform) ?? null;
-                selectionTransform?.setContentSize(selectionWidth, selectionHeight);
+                borderGraphics.stroke();
             }
+        });
+
+        /** 棋盘中按照需求顺序展示的全部单词。 */
+        const words: readonly string[] = [
+            ...PLAYABLE_CONFIG.completedWords,
+            ...PLAYABLE_CONFIG.wordSteps.map((step: WordStepConfig): string => step.word),
+        ];
+        words.forEach((word: string, wordIndex: number): void => {
+            /** 当前单词的固定字谜布局。 */
+            const wordLayout: CrosswordWordLayout | undefined = CROSSWORD_LAYOUT.find(
+                (layout: CrosswordWordLayout): boolean => layout.word === word,
+            );
+            if (!wordLayout || wordLayout.cells.length === 0) {
+                return;
+            }
+            /** 当前单词全部字格横坐标的总和。 */
+            const totalX: number = wordLayout.cells.reduce(
+                (sum: number, coordinate: CrosswordCellCoordinate): number =>
+                    sum + (coordinate.column - centerColumn) * cellStep,
+                0,
+            );
+            /** 当前单词全部字格纵坐标的总和。 */
+            const totalY: number = wordLayout.cells.reduce(
+                (sum: number, coordinate: CrosswordCellCoordinate): number =>
+                    sum + (centerRow - coordinate.row) * cellStep,
+                0,
+            );
+            this.wordTargetPositions[wordIndex].set(
+                totalX / wordLayout.cells.length,
+                totalY / wordLayout.cells.length,
+                0,
+            );
         });
     }
 
-    /** 更新下载圆形按钮和内部图标尺寸。 */
+    /** 按当前设计分辨率让森林背景和双雾层覆盖整个画布。 */
+    private applyBackdropLayout(width: number, height: number): void {
+        /** 1200 方形素材覆盖当前画布所需的统一缩放。 */
+        const coverScale: number = Math.max(width / 1200, height / 1200);
+        this.backgroundSpriteNode?.setScale(coverScale, coverScale, 1);
+        this.fogSpan = 1200 * coverScale;
+        this.fogOffset = Math.max(-this.fogSpan, Math.min(0, this.fogOffset));
+        this.fogNodes.forEach((fogNode: Node, fogIndex: number): void => {
+            fogNode.setScale(coverScale, coverScale, 1);
+            fogNode.setPosition(this.fogOffset + fogIndex * this.fogSpan, 0, 0);
+        });
+    }
+
+    /** 按当前画布大小重绘四周闪光边框。 */
+    private redrawFeedbackFlash(width: number, height: number): void {
+        if (!this.feedbackFlashNode || !this.feedbackFlashGraphics) {
+            return;
+        }
+        this.feedbackFlashNode.getComponent(UITransform)?.setContentSize(width, height);
+        this.feedbackFlashGraphics.clear();
+        this.feedbackFlashGraphics.lineWidth = 32;
+        this.feedbackFlashGraphics.rect(
+            -width / 2 + 16,
+            -height / 2 + 16,
+            width - 32,
+            height - 32,
+        );
+        this.feedbackFlashGraphics.stroke();
+    }
+
+    /** 更新圆形下载按钮和内部 PSD 图标尺寸。 */
     private applyDownloadButtonSize(buttonSize: number, iconSize: number): void {
         /** 下载按钮尺寸组件。 */
         const buttonTransform: UITransform | null = this.downloadNode
@@ -516,46 +1064,50 @@ export class PlayableGameView extends Component {
         /** 竖屏安装组合相对节点中心的可见右边界。 */
         const portraitRightOffset: number = 138;
         /** 竖屏安装组合相对节点中心的可见下边界。 */
-        const portraitBottomOffset: number = 34;
+        const portraitBottomOffset: number = 43;
         this.installPanelNode.setPosition(
             visibleSize.width / 2 - safeMargin - portraitRightOffset,
             -visibleSize.height / 2 + safeMargin + portraitBottomOffset,
             0,
         );
-        panelTransform.setContentSize(260, 72);
-        gameIconNode?.setPosition(-62, 0, 0);
-        gameIconTransform?.setContentSize(64, 64);
+        panelTransform.setContentSize(280, 84);
+        gameIconNode?.setPosition(-72, 0, 0);
+        gameIconTransform?.setContentSize(72, 72);
         installButtonNode?.setPosition(58, 0, 0);
-        installButtonTransform?.setContentSize(160, 68);
-        installBackgroundTransform?.setContentSize(160, 68);
-        installLabelTransform?.setContentSize(146, 60);
+        installButtonTransform?.setContentSize(176, 80);
+        installBackgroundTransform?.setContentSize(176, 80);
+        installLabelTransform?.setContentSize(160, 70);
         if (installLabel) {
-            installLabel.fontSize = 32;
-            installLabel.lineHeight = 38;
+            installLabel.fontSize = 34;
+            installLabel.lineHeight = 42;
         }
     }
 
     /** 应用横屏结束页节点位置。 */
     private applyLandscapeEndCardPositions(): void {
-        this.endCardIconNode?.setPosition(0, 170, 0);
-        this.endCardIconNode?.setScale(1.45, 1.45, 1);
-        this.brandNode?.setPosition(0, 25, 0);
+        this.endCardIconNode?.setPosition(0, 205, 0);
+        this.endCardIconNode?.setScale(1.25, 1.25, 1);
+        this.brandNode?.setPosition(0, 105, 0);
         this.brandNode?.setScale(1, 1, 1);
+        this.endCardNode?.getChildByName("EndCardTagline")?.setPosition(0, -5, 0);
         this.playNowNode?.setPosition(0, -165, 0);
         this.playNowNode?.setScale(1, 1, 1);
+        this.playNowNode?.getComponent(UITransform)?.setContentSize(430, 113);
     }
 
     /** 应用竖屏结束页节点位置。 */
     private applyPortraitEndCardPositions(): void {
-        this.endCardIconNode?.setPosition(0, 230, 0);
-        this.endCardIconNode?.setScale(1.84, 1.84, 1);
-        this.brandNode?.setPosition(0, 20, 0);
-        this.brandNode?.setScale(1.25, 1.25, 1);
-        this.playNowNode?.setPosition(0, -350, 0);
+        this.endCardIconNode?.setPosition(0, 345, 0);
+        this.endCardIconNode?.setScale(1.65, 1.65, 1);
+        this.brandNode?.setPosition(0, 205, 0);
+        this.brandNode?.setScale(1.15, 1.15, 1);
+        this.endCardNode?.getChildByName("EndCardTagline")?.setPosition(0, 35, 0);
+        this.playNowNode?.setPosition(0, -165, 0);
         this.playNowNode?.setScale(1.08, 1.08, 1);
+        this.playNowNode?.getComponent(UITransform)?.setContentSize(500, 132);
     }
 
-    /** 重绘自适应黑色背景。 */
+    /** 重绘森林图片加载前使用的自适应后备背景。 */
     private redrawBackground(width: number, height: number): void {
         if (!this.backgroundGraphics) {
             return;
@@ -593,12 +1145,11 @@ export class PlayableGameView extends Component {
             this.wheelLetterLabels.push(letterView.letterLabel);
             this.wheelLetterHighlights.push(letterView.highlightNode);
         });
-        this.startWheelLetterPulse();
         this.currentGuideTargetWord = targetWord;
         if (showGuideImmediately) {
             this.startGuideHandAnimation(targetWord);
-        } else {
-            this.scheduleGuideAfterIdle();
+        } else if (this.hasStartedByInteraction) {
+            this.scheduleGuideAfterIdle(PLAYABLE_CONFIG.idleGuideDelaySeconds);
         }
     }
 
@@ -718,11 +1269,18 @@ export class PlayableGameView extends Component {
         const selectedWord: string = this.getSelectedWord();
         /** 当前目标步骤配置。 */
         const currentStep: WordStepConfig | undefined = PLAYABLE_CONFIG.wordSteps[this.currentStepIndex];
-        if (!currentStep || selectedWord !== currentStep.word) {
-            this.handleWrongWord();
+        if (currentStep && selectedWord === currentStep.word) {
+            this.handleCorrectWord(currentStep);
             return;
         }
-        this.handleCorrectWord(currentStep);
+        /** 当前组合是否属于已经填入或收藏夹中的有效词。 */
+        const isRepeatWord: boolean = this.completedWords.has(selectedWord)
+            || PLAYABLE_CONFIG.bonusWords.includes(selectedWord);
+        if (isRepeatWord) {
+            this.handleRepeatWord();
+        } else {
+            this.handleWrongWord();
+        }
     }
 
     /** 将屏幕触点转换成字盘局部坐标。 */
@@ -755,6 +1313,7 @@ export class PlayableGameView extends Component {
         /** 新选中字母的视图组件。 */
         const letterView: WheelLetterView | null = letterNode.getComponent(WheelLetterView);
         letterView?.setSelected(true);
+        this.playEffect(this.tapAudioClip, 0.48);
         this.updateSelectedWordLabel();
     }
 
@@ -784,7 +1343,7 @@ export class PlayableGameView extends Component {
             .join("");
     }
 
-    /** 更新字盘上方蓝色横条中的当前组合文案。 */
+    /** 更新字盘上方深绿色横条中的当前组合文案。 */
     private updateSelectedWordLabel(): void {
         /** 当前手势组成的单词。 */
         const selectedWord: string = this.getSelectedWord();
@@ -792,12 +1351,12 @@ export class PlayableGameView extends Component {
         const bannerWidth: number = Math.max(180, selectedWord.length * 38 + 50);
         if (this.selectedWordLabel) {
             this.selectedWordLabel.string = Array.from(selectedWord).join(" ");
-            /** 蓝色横条文字的尺寸组件。 */
+            /** 深绿色横条文字的尺寸组件。 */
             const labelTransform: UITransform = this.selectedWordLabel.node.getComponent(UITransform)!;
             labelTransform.setContentSize(bannerWidth - 20, 64);
         }
         if (this.selectionBannerNode) {
-            /** 蓝色横条根节点的尺寸组件。 */
+            /** 深绿色横条根节点的尺寸组件。 */
             const bannerTransform: UITransform = this.selectionBannerNode.getComponent(UITransform)!;
             bannerTransform.setContentSize(bannerWidth, 70);
             this.selectionBannerNode.active = true;
@@ -818,7 +1377,7 @@ export class PlayableGameView extends Component {
 
         this.traceGraphics.clear();
         this.traceGraphics.strokeColor = SELECTION_COLOR;
-        this.traceGraphics.lineWidth = 10;
+        this.traceGraphics.lineWidth = TRACE_LINE_WIDTH;
         /** 首个选中字母的位置。 */
         const firstPosition: Vec3 = this.wheelLetterNodes[this.selectedLetterIndices[0]].position;
         this.traceGraphics.moveTo(firstPosition.x, firstPosition.y);
@@ -837,32 +1396,45 @@ export class PlayableGameView extends Component {
     private handleWrongWord(): void {
         this.errorCount += 1;
         this.hideGuideHand();
-        /** 当前错误是否已经达到结束阈值。 */
-        const shouldEndByError: boolean = this.errorCount >= PLAYABLE_CONFIG.maxErrorCount;
-        if (shouldEndByError) {
-            this.isInputLocked = true;
-        }
+        this.playEffect(this.wrongAudioClip);
+        this.showFeedbackFlash(WRONG_FLASH_COLOR);
         this.resetTraceState();
-        if (shouldEndByError) {
-            this.showEndCard("errors");
-        }
         this.node.emit("playable-word-error", this.errorCount);
+    }
+
+    /** 处理已填单词或收藏夹词，并以黄光反馈后继续下一次连线。 */
+    private handleRepeatWord(): void {
+        /** 本轮识别出的重复或收藏夹单词。 */
+        const repeatedWord: string = this.getSelectedWord();
+        this.hideGuideHand();
+        this.playEffect(this.repeatAudioClip);
+        this.showFeedbackFlash(REPEAT_FLASH_COLOR);
+        this.resetTraceState();
+        this.node.emit("playable-word-repeat", repeatedWord);
     }
 
     /** 处理正确单词并立即推进至下一步骤，反馈动画继续独立播放。 */
     private handleCorrectWord(step: WordStepConfig): void {
         this.isInputLocked = true;
+        /** 本次正确填写对应的步骤索引。 */
+        const completedStepIndex: number = this.currentStepIndex;
         /** 当前是否完成了最后一个目标单词。 */
         const isFinalWord: boolean = this.currentStepIndex
             >= PLAYABLE_CONFIG.wordSteps.length - 1;
         this.hideGuideHand();
         this.hideSelectionVisuals();
+        this.playEffect(this.correctAudioClip);
         this.animateWordLanding(step.word);
         this.showPraiseAnimation(step.praise);
         this.completeCurrentBoardRow(step.word);
+        this.showGoldParticleBurst(step.word);
+        this.completedWords.add(step.word);
         this.isTracing = false;
         this.selectedLetterIndices.length = 0;
         this.currentStepIndex += 1;
+        if (completedStepIndex === PLAYABLE_CONFIG.storeRedirectStepIndex) {
+            this.handleDownloadRequest();
+        }
         if (isFinalWord) {
             /** 等鼓励横幅完整播放并清理后再进入结束页，避免两层内容重叠。 */
             this.scheduleOnce((): void => {
@@ -892,14 +1464,16 @@ export class PlayableGameView extends Component {
         flyingLabel.isBold = true;
         flyingLabel.node.setPosition(this.wheelNode.position);
 
-        /** 目标单词行节点。 */
-        const targetRow: Node = this.wordRowNodes[this.currentStepIndex + 1];
+        /** 当前目标单词在完整棋盘单词列表中的索引。 */
+        const targetWordIndex: number = PLAYABLE_CONFIG.completedWords.length + this.currentStepIndex;
+        /** 目标单词在棋盘局部坐标中的中心。 */
+        const targetWordPosition: Vec3 = this.wordTargetPositions[targetWordIndex] ?? Vec3.ZERO;
         /** 单词面板当前缩放。 */
         const boardScale: Vec3 = this.boardNode.scale;
         /** 飞行动画终点。 */
         const targetPosition: Vec3 = new Vec3(
-            this.boardNode.position.x + targetRow.position.x * boardScale.x,
-            this.boardNode.position.y + targetRow.position.y * boardScale.y,
+            this.boardNode.position.x + targetWordPosition.x * boardScale.x,
+            this.boardNode.position.y + targetWordPosition.y * boardScale.y,
             0,
         );
         tween(flyingLabel.node)
@@ -919,15 +1493,13 @@ export class PlayableGameView extends Component {
             return;
         }
 
-        /** 鼓励词资源文件名。 */
-        const praiseResourceName: string = praise.toLowerCase();
         /** 鼓励词精灵节点。 */
         const praiseNode: Node = this.createSpriteNode(
             `Praise_${praise}`,
             this.layoutRoot,
-            `playable/ui/praise_${praiseResourceName}/spriteFrame`,
-            600,
-            118,
+            "playable/psd/praise-spectacular/spriteFrame",
+            584,
+            90,
         );
         /** 鼓励词透明度组件。 */
         const praiseOpacity: UIOpacity = praiseNode.addComponent(UIOpacity);
@@ -978,7 +1550,7 @@ export class PlayableGameView extends Component {
     /** 将当前目标行填成完整白色单词。 */
     private completeCurrentBoardRow(word: string): void {
         /** 当前目标在单词面板中的行索引。 */
-        const rowIndex: number = this.currentStepIndex + 1;
+        const rowIndex: number = PLAYABLE_CONFIG.completedWords.length + this.currentStepIndex;
         /** 当前行所有字母标签。 */
         const labels: Label[] = this.wordSlotLabels[rowIndex] ?? [];
         /** 当前行所有字格背景。 */
@@ -993,6 +1565,7 @@ export class PlayableGameView extends Component {
             }
 
             letterLabel.string = letter;
+            letterLabel.color = new Color(255, 255, 255, 255);
             letterLabel.node.setScale(0.1, 0.1, 1);
             this.setSlotColor(slotBackground, FILLED_SLOT_COLOR);
             tween(letterLabel.node)
@@ -1000,10 +1573,68 @@ export class PlayableGameView extends Component {
                 .to(0.18, { scale: new Vec3(1, 1, 1) }, { easing: "backOut" })
                 .start();
         });
-        /** 当前步骤发光框节点。 */
-        const currentGlow: Node | undefined = this.wordGlowNodes[this.currentStepIndex];
-        if (currentGlow) {
-            currentGlow.active = false;
+    }
+
+    /** 在正确单词落点周围播放一圈金色粒子，强化填写成功反馈。 */
+    private showGoldParticleBurst(word: string): void {
+        if (!this.layoutRoot || !this.boardNode) {
+            return;
+        }
+
+        /** 当前目标单词在完整棋盘中的索引。 */
+        const targetWordIndex: number = PLAYABLE_CONFIG.completedWords.length + this.currentStepIndex;
+        /** 当前目标单词在棋盘局部坐标中的中心。 */
+        const targetWordPosition: Vec3 = this.wordTargetPositions[targetWordIndex] ?? Vec3.ZERO;
+        /** 棋盘当前响应式缩放。 */
+        const boardScale: Vec3 = this.boardNode.scale;
+        /** 粒子爆发在内容根节点中的中心坐标。 */
+        const burstCenter: Vec3 = new Vec3(
+            this.boardNode.position.x + targetWordPosition.x * boardScale.x,
+            this.boardNode.position.y + targetWordPosition.y * boardScale.y,
+            0,
+        );
+        /** 根据单词长度适当扩大横向粒子范围。 */
+        const horizontalRadius: number = Math.max(95, word.length * 24);
+        /** 单次爆发使用的粒子数量。 */
+        const particleCount: number = 18;
+        for (let particleIndex: number = 0; particleIndex < particleCount; particleIndex += 1) {
+            /** 当前粒子均匀分布的角度。 */
+            const angle: number = Math.PI * 2 * particleIndex / particleCount;
+            /** 当前粒子节点。 */
+            const particleNode: Node = this.createUiNode(`GoldParticle_${particleIndex}`, this.layoutRoot, 20, 20);
+            /** 当前粒子的金色圆点图形。 */
+            const particleGraphics: Graphics = particleNode.addComponent(Graphics);
+            /** 当前粒子的透明度组件。 */
+            const particleOpacity: UIOpacity = particleNode.addComponent(UIOpacity);
+            /** 当前粒子大小，交替产生层次感。 */
+            const particleRadius: number = 3 + particleIndex % 3;
+            particleGraphics.fillColor = particleIndex % 2 === 0
+                ? new Color(255, 222, 74, 255)
+                : new Color(255, 174, 35, 255);
+            particleGraphics.circle(0, 0, particleRadius);
+            particleGraphics.fill();
+            particleNode.setPosition(burstCenter);
+            particleNode.setScale(0.2, 0.2, 1);
+            particleNode.setSiblingIndex(this.layoutRoot.children.length - 1);
+
+            /** 当前粒子最终散开的坐标。 */
+            const targetPosition: Vec3 = new Vec3(
+                burstCenter.x + Math.cos(angle) * horizontalRadius,
+                burstCenter.y + Math.sin(angle) * 78,
+                0,
+            );
+            tween(particleNode)
+                .delay((particleIndex % 4) * 0.025)
+                .parallel(
+                    tween().to(0.52, { position: targetPosition }, { easing: "quadOut" }),
+                    tween().to(0.18, { scale: new Vec3(1.25, 1.25, 1) }, { easing: "backOut" })
+                        .to(0.34, { scale: new Vec3(0.25, 0.25, 1) }),
+                    tween(particleOpacity).delay(0.28).to(0.24, { opacity: 0 }),
+                )
+                .call((): void => {
+                    particleNode.destroy();
+                })
+                .start();
         }
     }
 
@@ -1018,32 +1649,18 @@ export class PlayableGameView extends Component {
             return;
         }
 
-        /** 下一行在单词面板中的索引。 */
-        const nextRowIndex: number = this.currentStepIndex + 1;
-        /** 下一行所有字格背景。 */
-        const nextBackgrounds: Sprite[] = this.wordSlotBackgrounds[nextRowIndex] ?? [];
-        nextBackgrounds.forEach((slotBackground: Sprite, letterIndex: number): void => {
-            this.setSlotColor(
-                slotBackground,
-                letterIndex === 0 ? FILLED_SLOT_COLOR : ACTIVE_SLOT_COLOR,
-            );
-        });
-        /** 下一行发光框节点。 */
-        const nextGlow: Node | undefined = this.wordGlowNodes[this.currentStepIndex];
-        if (nextGlow) {
-            nextGlow.active = true;
-        }
         this.createWheelLetters(this.wheelNode, nextStep.wheelLetters, nextStep.word);
         this.isInputLocked = false;
     }
 
     /** 显示品牌结束页并通知广告宿主试玩结束。 */
-    private showEndCard(reason: "completed" | "errors"): void {
+    private showEndCard(reason: "completed" | "timeout"): void {
         if (this.isEndCardVisible || !this.endCardNode) {
             return;
         }
 
         this.unschedule(this.handleGuideIdleTimeout);
+        this.unschedule(this.handleCountdownTick);
         this.hideGuideHand();
         this.clearPraiseAnimations();
         this.isEndCardVisible = true;
@@ -1051,6 +1668,7 @@ export class PlayableGameView extends Component {
         this.isTracing = false;
         this.hideSelectionVisuals();
         this.promptNode && (this.promptNode.active = false);
+        this.clockNode && (this.clockNode.active = false);
         this.boardNode && (this.boardNode.active = false);
         this.wheelNode && (this.wheelNode.active = false);
         this.endCardNode.active = true;
@@ -1123,7 +1741,6 @@ export class PlayableGameView extends Component {
             Tween.stopAllByTarget(letterNode);
             letterNode.setScale(1, 1, 1);
         });
-        this.startWheelLetterPulse();
     }
 
     /** 隐藏当前连线、选中圆和字盘上方组合横条。 */
@@ -1151,6 +1768,7 @@ export class PlayableGameView extends Component {
         }
 
         Tween.stopAllByTarget(this.guideHandNode);
+        this.clearGuidePreviewVisuals();
         /** 引导手透明度组件。 */
         const handOpacity: UIOpacity = this.guideHandNode.getComponent(UIOpacity)
             ?? this.guideHandNode.addComponent(UIOpacity);
@@ -1165,33 +1783,156 @@ export class PlayableGameView extends Component {
             .start();
     }
 
-    /** 记录轮盘交互，隐藏手势并从最后一次操作重新计算五秒空闲时间。 */
-    private recordPlayerInteraction(): void {
-        this.hideGuideHand();
-        this.scheduleGuideAfterIdle();
+    /** 首次有效交互时启动背景音乐和三十秒倒计时。 */
+    private startGameplayFromInteraction(): void {
+        if (this.hasStartedByInteraction || this.isEndCardVisible) {
+            return;
+        }
+
+        this.hasStartedByInteraction = true;
+        this.remainingSeconds = PLAYABLE_CONFIG.countdownSeconds;
+        this.updateClockLabel();
+        this.playBackgroundMusic();
+        this.unschedule(this.handleCountdownTick);
+        this.schedule(this.handleCountdownTick, 1);
     }
 
-    /** 在玩家连续五秒没有轮盘操作后重新显示当前单词引导。 */
-    private scheduleGuideAfterIdle(): void {
+    /** 在浏览器用户手势已经发生后播放循环背景音乐。 */
+    private playBackgroundMusic(): void {
+        if (!this.backgroundAudioSource || !this.backgroundMusicClip) {
+            return;
+        }
+        this.backgroundAudioSource.clip = this.backgroundMusicClip;
+        if (!this.backgroundAudioSource.playing) {
+            this.backgroundAudioSource.play();
+        }
+    }
+
+    /** 播放一次指定短音效。 */
+    private playEffect(clip: AudioClip | null, volumeScale: number = 1): void {
+        if (!clip || !this.effectAudioSource) {
+            return;
+        }
+        this.effectAudioSource.playOneShot(clip, volumeScale);
+    }
+
+    /** 每秒推进倒计时，最后五秒抖动并在归零时进入最终页。 */
+    private handleCountdownTick(): void {
+        if (this.isEndCardVisible) {
+            this.unschedule(this.handleCountdownTick);
+            return;
+        }
+
+        this.remainingSeconds = Math.max(0, this.remainingSeconds - 1);
+        this.updateClockLabel();
+        if (this.remainingSeconds <= 5 && !this.hasStartedClockWarning) {
+            this.startClockWarningAnimation();
+        }
+        if (this.remainingSeconds > 0) {
+            return;
+        }
+        this.unschedule(this.handleCountdownTick);
+        this.showEndCard("timeout");
+    }
+
+    /** 将最新倒计时秒数写入闹钟数字。 */
+    private updateClockLabel(): void {
+        if (this.clockLabel) {
+            this.clockLabel.string = String(this.remainingSeconds);
+        }
+    }
+
+    /** 循环大幅抖动最后五秒的闹钟图标。 */
+    private startClockWarningAnimation(): void {
+        if (!this.clockNode) {
+            return;
+        }
+        this.hasStartedClockWarning = true;
+        /** 抖动开始时闹钟所在的响应式基准位置。 */
+        const basePosition: Vec3 = this.clockNode.position.clone();
+        Tween.stopAllByTarget(this.clockNode);
+        tween(this.clockNode)
+            .to(0.06, { position: new Vec3(basePosition.x - 13, basePosition.y + 6, 0), scale: new Vec3(1.15, 1.15, 1) })
+            .to(0.06, { position: new Vec3(basePosition.x + 13, basePosition.y - 6, 0), scale: new Vec3(1.15, 1.15, 1) })
+            .to(0.06, { position: basePosition, scale: Vec3.ONE })
+            .union()
+            .repeatForever()
+            .start();
+    }
+
+    /** 以指定颜色闪烁一次画面四周。 */
+    private showFeedbackFlash(color: Color): void {
+        if (!this.feedbackFlashNode || !this.feedbackFlashGraphics) {
+            return;
+        }
+        /** 当前画布逻辑尺寸。 */
+        const visibleSize: Size = view.getVisibleSize();
+        this.feedbackFlashGraphics.strokeColor = color;
+        this.redrawFeedbackFlash(visibleSize.width, visibleSize.height);
+        /** 边缘闪光透明度组件。 */
+        const flashOpacity: UIOpacity = this.feedbackFlashNode.getComponent(UIOpacity)!;
+        Tween.stopAllByTarget(flashOpacity);
+        this.feedbackFlashNode.active = true;
+        this.feedbackFlashNode.setSiblingIndex(this.layoutRoot!.children.length - 1);
+        flashOpacity.opacity = 255;
+        tween(flashOpacity)
+            .to(0.32, { opacity: 0 }, { easing: "sineOut" })
+            .call((): void => {
+                if (this.feedbackFlashNode) {
+                    this.feedbackFlashNode.active = false;
+                }
+            })
+            .start();
+    }
+
+    /** 记录玩家交互，首次启动音频与倒计时，并重新计算两秒空闲提示。 */
+    private recordPlayerInteraction(): void {
+        this.startGameplayFromInteraction();
+        if (this.promptNode) {
+            this.promptNode.active = false;
+        }
+        this.hideGuideHand();
+        this.scheduleGuideAfterIdle(PLAYABLE_CONFIG.idleGuideDelaySeconds);
+    }
+
+    /** 在玩家连续指定秒数没有操作后显示当前单词引导。 */
+    private scheduleGuideAfterIdle(delaySeconds: number): void {
         this.unschedule(this.handleGuideIdleTimeout);
         if (this.isEndCardVisible || !this.currentGuideTargetWord) {
             return;
         }
-        this.scheduleOnce(this.handleGuideIdleTimeout, 5);
+        this.scheduleOnce(this.handleGuideIdleTimeout, delaySeconds);
     }
 
     /** 处理五秒无操作计时结束。 */
     private handleGuideIdleTimeout(): void {
         if (this.isEndCardVisible || this.isTracing || this.isInputLocked) {
-            this.scheduleGuideAfterIdle();
+            this.scheduleGuideAfterIdle(PLAYABLE_CONFIG.idleGuideDelaySeconds);
             return;
+        }
+        if (this.promptNode) {
+            this.promptNode.active = true;
+            /** 引导提示透明度组件。 */
+            const promptOpacity: UIOpacity = this.promptNode.getComponent(UIOpacity)
+                ?? this.promptNode.addComponent(UIOpacity);
+            promptOpacity.opacity = 255;
         }
         this.startGuideHandAnimation(this.currentGuideTargetWord);
     }
 
-    /** 启动右下下载箭头循环动画；字盘引导由每轮字母生成时启动。 */
+    /** 启动下载按钮，并在进入页面时立即显示文案和手势引导。 */
     private startInitialAnimations(): void {
         this.startDownloadIconAnimation();
+        if (this.promptNode) {
+            this.promptNode.active = true;
+            /** 首屏引导文案透明度组件。 */
+            const promptOpacity: UIOpacity = this.promptNode.getComponent(UIOpacity)
+                ?? this.promptNode.addComponent(UIOpacity);
+            Tween.stopAllByTarget(promptOpacity);
+            promptOpacity.opacity = 255;
+        }
+        this.traceGraphics?.clear();
+        this.startGuideHandAnimation(this.currentGuideTargetWord);
     }
 
     /** 按十二点起始逆时针顺序循环放大缩小字盘字母。 */
@@ -1226,10 +1967,11 @@ export class PlayableGameView extends Component {
         Tween.stopAllByTarget(handOpacity);
         this.guideHandNode.active = true;
         handOpacity.opacity = 0;
+        this.clearGuidePreviewVisuals();
         /** 已加入引导路径的轮盘字母索引。 */
         const usedLetterIndices: number[] = [];
-        /** 按目标单词字符顺序解析出的全部手势目标位置。 */
-        const targetPositions: Vec3[] = Array.from(targetWord)
+        /** 按目标单词字符顺序解析出的全部字母中心位置。 */
+        const letterCenterPositions: Vec3[] = Array.from(targetWord)
             .map((targetLetter: string): Vec3 | null => {
                 /** 当前目标字符在轮盘中尚未使用的位置。 */
                 const letterIndex: number = this.wheelLetterLabels.findIndex(
@@ -1243,23 +1985,42 @@ export class PlayableGameView extends Component {
                 usedLetterIndices.push(letterIndex);
                 /** 当前目标字符对应的轮盘节点。 */
                 const letterNode: Node = this.wheelLetterNodes[letterIndex];
-                return new Vec3(
-                    letterNode.position.x + 34,
-                    letterNode.position.y - 36,
-                    0,
-                );
+                return letterNode.position.clone();
             })
-            .filter((targetPosition: Vec3 | null): targetPosition is Vec3 =>
-                targetPosition !== null,
+            .filter((letterCenterPosition: Vec3 | null): letterCenterPosition is Vec3 =>
+                letterCenterPosition !== null,
             );
-        if (targetPositions.length === 0) {
+        if (letterCenterPositions.length === 0) {
             this.guideHandNode.active = false;
             return;
         }
-        this.guideHandNode.setPosition(targetPositions[0]);
+        this.guideLetterCenterPositions.push(...letterCenterPositions);
+        this.guideLetterIndices.push(...usedLetterIndices);
+        /** PSD 手势图片中心到指尖热点的反向补偿，使指尖准确落在字母中心。 */
+        const handCenterOffset: Vec3 = new Vec3(
+            64 * this.guideHandNode.scale.x,
+            -84 * this.guideHandNode.scale.y,
+            0,
+        );
+        this.guideHandCenterOffset.set(handCenterOffset);
+        /** 手势节点沿每个字母中心移动时实际采用的位置。 */
+        const handNodePositions: Vec3[] = letterCenterPositions.map(
+            (letterCenterPosition: Vec3): Vec3 => new Vec3(
+                letterCenterPosition.x + handCenterOffset.x,
+                letterCenterPosition.y + handCenterOffset.y,
+                0,
+            ),
+        );
+        this.guideHandNode.setPosition(handNodePositions[0]);
         /** 引导手循环补间。 */
         let handTween: Tween<Node> = tween(this.guideHandNode)
             .call((): void => {
+                this.clearGuideSelectedLetters();
+                this.traceGraphics?.clear();
+                this.guideTraceTargetIndex = 0;
+                this.isGuidePreviewAnimating = true;
+                this.guideHandNode?.setPosition(handNodePositions[0]);
+                this.setGuideLetterSelected(0, true);
                 Tween.stopAllByTarget(handOpacity);
                 tween(handOpacity)
                     .to(0.3, { opacity: 255 }, { easing: "sineIn" })
@@ -1267,8 +2028,17 @@ export class PlayableGameView extends Component {
             })
             .delay(0.3)
             .delay(0.5);
-        targetPositions.slice(1).forEach((targetPosition: Vec3): void => {
-            handTween = handTween.to(0.5, { position: targetPosition }, { easing: "sineInOut" });
+        handNodePositions.slice(1).forEach((handNodePosition: Vec3, positionIndex: number): void => {
+            /** 当前移动段的目标路径索引。 */
+            const targetPathIndex: number = positionIndex + 1;
+            handTween = handTween
+                .call((): void => {
+                    this.guideTraceTargetIndex = targetPathIndex;
+                })
+                .to(0.5, { position: handNodePosition }, { easing: "sineInOut" })
+                .call((): void => {
+                    this.setGuideLetterSelected(targetPathIndex, true);
+                });
         });
         /** 到达末字母后隐藏一秒，再从首字母开始下一轮。 */
         handTween
@@ -1279,30 +2049,103 @@ export class PlayableGameView extends Component {
                     .start();
             })
             .delay(0.3)
-            .delay(1)
             .call((): void => {
-                this.guideHandNode?.setPosition(targetPositions[0]);
-                Tween.stopAllByTarget(handOpacity);
-                handOpacity.opacity = 0;
+                this.isGuidePreviewAnimating = false;
+                this.clearGuideSelectedLetters();
+                this.traceGraphics?.clear();
             })
+            .delay(1)
             .union()
             .repeatForever()
             .start();
     }
 
-    /** 循环播放右下下载箭头上下浮动动画。 */
-    private startDownloadIconAnimation(): void {
-        if (!this.downloadIconNode) {
+    /** 按引导手指尖的实时位置绘制逐步增长的实线。 */
+    private redrawGuideTraceProgress(): void {
+        if (
+            !this.traceGraphics
+            || !this.guideHandNode
+            || this.guideTraceTargetIndex <= 0
+            || this.guideLetterCenterPositions.length < 2
+        ) {
             return;
         }
 
-        /** 下载图标初始位置。 */
-        const originalPosition: Vec3 = this.downloadIconNode.position.clone();
-        tween(this.downloadIconNode)
-            .to(0.55, {
-                position: new Vec3(originalPosition.x, originalPosition.y - 9, 0),
-            }, { easing: "sineInOut" })
-            .to(0.55, { position: originalPosition }, { easing: "sineInOut" })
+        this.traceGraphics.clear();
+        this.traceGraphics.strokeColor = SELECTION_COLOR;
+        this.traceGraphics.lineWidth = TRACE_LINE_WIDTH;
+        /** 引导路径的首个字母中心。 */
+        const firstPosition: Vec3 = this.guideLetterCenterPositions[0];
+        this.traceGraphics.moveTo(firstPosition.x, firstPosition.y);
+        for (let pathIndex: number = 1; pathIndex < this.guideTraceTargetIndex; pathIndex += 1) {
+            /** 已经完整经过的字母中心。 */
+            const completedPosition: Vec3 = this.guideLetterCenterPositions[pathIndex];
+            this.traceGraphics.lineTo(completedPosition.x, completedPosition.y);
+        }
+        /** 当前指尖在字盘中的实时位置。 */
+        const fingerPosition: Vec3 = new Vec3(
+            this.guideHandNode.position.x - this.guideHandCenterOffset.x,
+            this.guideHandNode.position.y - this.guideHandCenterOffset.y,
+            0,
+        );
+        this.traceGraphics.lineTo(fingerPosition.x, fingerPosition.y);
+        this.traceGraphics.stroke();
+    }
+
+    /** 设置引导路径中指定字母的选中圆、文字颜色和缩放。 */
+    private setGuideLetterSelected(pathIndex: number, selected: boolean): void {
+        /** 当前路径位置对应的字盘字母索引。 */
+        const letterIndex: number | undefined = this.guideLetterIndices[pathIndex];
+        if (letterIndex === undefined) {
+            return;
+        }
+        /** 当前字母的选中圆节点。 */
+        const highlightNode: Node | undefined = this.wheelLetterHighlights[letterIndex];
+        /** 当前字母标签。 */
+        const letterLabel: Label | undefined = this.wheelLetterLabels[letterIndex];
+        /** 当前字母节点。 */
+        const letterNode: Node | undefined = this.wheelLetterNodes[letterIndex];
+        if (highlightNode) {
+            highlightNode.active = selected;
+        }
+        if (letterLabel) {
+            letterLabel.color = selected
+                ? new Color(255, 255, 255, 255)
+                : new Color(0, 0, 0, 255);
+        }
+        letterNode?.setScale(selected ? new Vec3(1.2, 1.2, 1) : Vec3.ONE);
+    }
+
+    /** 清除一轮引导中已经依次点亮的字母。 */
+    private clearGuideSelectedLetters(): void {
+        this.guideLetterIndices.forEach((_letterIndex: number, pathIndex: number): void => {
+            this.setGuideLetterSelected(pathIndex, false);
+        });
+    }
+
+    /** 终止引导预览并释放路径缓存，不影响玩家正在进行的真实连线。 */
+    private clearGuidePreviewVisuals(): void {
+        this.isGuidePreviewAnimating = false;
+        this.guideTraceTargetIndex = 0;
+        this.clearGuideSelectedLetters();
+        this.guideLetterCenterPositions.length = 0;
+        this.guideLetterIndices.length = 0;
+        if (!this.isTracing) {
+            this.traceGraphics?.clear();
+        }
+    }
+
+    /** 循环播放右下 PSD 下载按钮原地缩放的呼吸动画。 */
+    private startDownloadIconAnimation(): void {
+        if (!this.downloadNode) {
+            return;
+        }
+
+        Tween.stopAllByTarget(this.downloadNode);
+        this.downloadNode.setScale(Vec3.ONE);
+        tween(this.downloadNode)
+            .to(0.58, { scale: new Vec3(1.07, 1.07, 1) }, { easing: "sineInOut" })
+            .to(0.58, { scale: Vec3.ONE }, { easing: "sineInOut" })
             .union()
             .repeatForever()
             .start();

@@ -36,10 +36,18 @@ export interface PlayableConfig {
     readonly endCardButtonText: string;
     /** 下载按钮文案。 */
     readonly downloadButtonText: string;
-    /** 达到该错误次数时进入最终页。 */
-    readonly maxErrorCount: number;
-    /** 开局直接填好的示例单词。 */
-    readonly completedWord: string;
+    /** 首次互动后启动的倒计时秒数。 */
+    readonly countdownSeconds: number;
+    /** 开局未操作时显示首次引导的延迟秒数。 */
+    readonly initialGuideDelaySeconds: number;
+    /** 游戏中停顿后再次显示引导的延迟秒数。 */
+    readonly idleGuideDelaySeconds: number;
+    /** 完成该步骤后立即触发商店跳转，使用从零开始的索引。 */
+    readonly storeRedirectStepIndex: number;
+    /** 开局已经填入棋盘的单词。 */
+    readonly completedWords: readonly string[];
+    /** 拼出后按重复词处理的收藏夹词库。 */
+    readonly bonusWords: readonly string[];
     /** 依次执行的单词步骤。 */
     readonly wordSteps: readonly WordStepConfig[];
 }
@@ -54,16 +62,29 @@ export const PLAYABLE_CONFIG: PlayableConfig = {
         googlePlayUrl: "https://play.google.com/store/apps/details?id=com.gsr.wordcross",
         appStoreUrl: "https://apps.apple.com/app/crossword-quest-word-puzzles/id1579681838",
     },
-    introPrompt: "How old is your brain?",
+    introPrompt: "Swipe to form words!",
     endCardButtonText: "Play Now",
     downloadButtonText: "Install",
-    maxErrorCount: 5,
-    completedWord: "RAIN",
+    countdownSeconds: 30,
+    initialGuideDelaySeconds: 6.5,
+    idleGuideDelaySeconds: 2,
+    storeRedirectStepIndex: 2,
+    completedWords: ["FEST", "SOFT"],
+    bonusWords: [
+        "FOSTER", "SOFTER", "FORTES",
+        "STORE", "FROST", "FORTS", "FRETS", "ROTES", "NOTES",
+        "FORE", "FRET", "FOES", "REST", "ROSE", "ROTE", "ROTS", "ROES",
+        "SORT", "SORE", "TORE", "TORS", "TOES", "ORES", "EROS", "NEST",
+        "NETS", "SENT", "SETS", "TENS", "NOSE", "NOES", "NOTE", "TONE", "SNOT",
+        "FOR", "FRO", "FOE", "ORE", "TOE", "TOR", "ROT", "REF", "OFT",
+        "SET", "SOT", "SON", "NET", "TEN", "NOT", "NOR", "TON",
+    ],
     wordSteps: [
-        { word: "FOREST", wheelLetters: "FOREST", praise: "Good" },
-        { word: "FIND", wheelLetters: "FINDZA", praise: "Great" },
-        { word: "THANK", wheelLetters: "THANKR", praise: "Fantastic" },
-        { word: "DANGER", wheelLetters: "DANGER", praise: "Wonderful" },
-        { word: "LARGEST", wheelLetters: "LARGEST", praise: "Good" },
+        { word: "FOREST", wheelLetters: "FTSERO", praise: "Spectacular" },
+        { word: "FORTE", wheelLetters: "FTSERO", praise: "Spectacular" },
+        { word: "FORES", wheelLetters: "FTSERO", praise: "Spectacular" },
+        { word: "FETOR", wheelLetters: "FTSERO", praise: "Spectacular" },
+        { word: "FORT", wheelLetters: "FTSERO", praise: "Spectacular" },
+        { word: "REFS", wheelLetters: "FTSERO", praise: "Spectacular" },
     ],
 };
