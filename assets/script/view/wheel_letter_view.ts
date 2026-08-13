@@ -50,7 +50,8 @@ export class WheelLetterView extends Component {
         const highlightSprite: Sprite | null = this.highlightNode.getComponent(Sprite);
         if (highlightSprite) {
             highlightSprite.enabled = true;
-            highlightSprite.color = new Color(29, 64, 55, 255);
+            /** 选中圆资源本身已包含需求中的深绿色，保持原始颜色。 */
+            highlightSprite.color = new Color(255, 255, 255, 255);
             highlightSprite.type = Sprite.Type.SIMPLE;
             highlightSprite.sizeMode = Sprite.SizeMode.CUSTOM;
         }

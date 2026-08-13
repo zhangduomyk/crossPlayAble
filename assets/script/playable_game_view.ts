@@ -46,20 +46,17 @@ const UI_LAYER: number = Layers.Enum.UI_2D;
 /** 森林背景资源尚未加载时使用的后备颜色。 */
 const BACKGROUND_COLOR: Color = new Color(88, 105, 87, 255);
 
-/** 普通未填写字格颜色。 */
-const SLOT_COLOR: Color = new Color(248, 247, 238, 255);
+/** 普通未填写字格颜色，PSD 图片加载前用于临时显示。 */
+const SLOT_COLOR: Color = new Color(255, 255, 255, 255);
 
-/** 当前步骤未填写字格颜色。 */
-const ACTIVE_SLOT_COLOR: Color = new Color(248, 247, 238, 255);
+/** 当前步骤未填写字格颜色，PSD 图片加载前用于临时显示。 */
+const ACTIVE_SLOT_COLOR: Color = new Color(255, 255, 255, 255);
 
-/** 已填写字格颜色。 */
-const FILLED_SLOT_COLOR: Color = new Color(82, 145, 58, 255);
+/** 已填写字格颜色，PSD 图片加载前用于临时显示。 */
+const FILLED_SLOT_COLOR: Color = new Color(83, 145, 61, 255);
 
 /** 字母连线、选中圆和组合横条使用的深绿色。 */
 const SELECTION_COLOR: Color = new Color(29, 64, 55, 255);
-
-/** 空字格描边使用的森林灰绿色。 */
-const SLOT_BORDER_COLOR: Color = new Color(119, 141, 111, 255);
 
 /** 错误单词触发的红色边缘闪光。 */
 const WRONG_FLASH_COLOR: Color = new Color(255, 80, 80, 230);
@@ -69,6 +66,12 @@ const REPEAT_FLASH_COLOR: Color = new Color(255, 215, 55, 230);
 
 /** 玩家连线和引导演示统一使用的加粗线宽。 */
 const TRACE_LINE_WIDTH: number = 20;
+
+/** 新烟雾原图宽度。 */
+const FOG_TEXTURE_WIDTH: number = 2820;
+
+/** 新烟雾原图高度。 */
+const FOG_TEXTURE_HEIGHT: number = 854;
 
 /** 单个字谜单元格的二维网格坐标。 */
 interface CrosswordCellCoordinate {
@@ -183,6 +186,9 @@ export class PlayableGameView extends Component {
     /** 当前雾层单张循环跨度。 */
     private fogSpan: number = 1200;
 
+    /** 当前雾层按屏幕底边对齐后的纵坐标。 */
+    private fogBottomY: number = 0;
+
     /** 左上角倒计时根节点。 */
     private clockNode: Node | null = null;
 
@@ -192,8 +198,20 @@ export class PlayableGameView extends Component {
     /** 红黄边缘闪光节点。 */
     private feedbackFlashNode: Node | null = null;
 
-    /** 红黄边缘闪光绘图组件。 */
-    private feedbackFlashGraphics: Graphics | null = null;
+    /** 红黄反馈使用的上、下、左、右四条 PSD 光带。 */
+    private readonly feedbackEdgeSprites: Sprite[] = [];
+
+    /** PSD 原稿中的红色反馈光带。 */
+    private redFeedbackSpriteFrame: SpriteFrame | null = null;
+
+    /** PSD 原稿中的黄色反馈光带。 */
+    private yellowFeedbackSpriteFrame: SpriteFrame | null = null;
+
+    /** PSD 原稿中的空白字格图片。 */
+    private emptySlotSpriteFrame: SpriteFrame | null = null;
+
+    /** PSD 原稿中的绿色已填字格图片。 */
+    private filledSlotSpriteFrame: SpriteFrame | null = null;
 
     /** 背景音乐播放器。 */
     private backgroundAudioSource: AudioSource | null = null;
@@ -338,8 +356,8 @@ export class PlayableGameView extends Component {
             if (this.fogOffset <= -this.fogSpan) {
                 this.fogOffset += this.fogSpan;
             }
-            this.fogNodes[0].setPosition(this.fogOffset, 0, 0);
-            this.fogNodes[1].setPosition(this.fogOffset + this.fogSpan, 0, 0);
+            this.fogNodes[0].setPosition(this.fogOffset, this.fogBottomY, 0);
+            this.fogNodes[1].setPosition(this.fogOffset + this.fogSpan, this.fogBottomY, 0);
         }
         if (this.isGuidePreviewAnimating) {
             this.redrawGuideTraceProgress();
@@ -462,7 +480,6 @@ export class PlayableGameView extends Component {
                     }
                     slotView.configure(SLOT_COLOR, "");
                     slotView.letterLabel.color = new Color(29, 64, 55, 255);
-                    this.createCrosswordCellBorder(slotNode);
                     this.crosswordCells.set(cellKey, slotView);
                     this.crosswordCoordinates.set(cellKey, coordinate);
                 }
@@ -501,19 +518,6 @@ export class PlayableGameView extends Component {
         return `${coordinate.column},${coordinate.row}`;
     }
 
-    /** 为克隆字格增加与需求稿一致的细绿色圆角描边。 */
-    private createCrosswordCellBorder(slotNode: Node): void {
-        /** 字格描边子节点。 */
-        const borderNode: Node = this.createUiNode("CellBorder", slotNode, 50, 50);
-        /** 字格描边绘图组件。 */
-        const borderGraphics: Graphics = borderNode.addComponent(Graphics);
-        borderGraphics.strokeColor = SLOT_BORDER_COLOR;
-        borderGraphics.lineWidth = 2;
-        borderGraphics.roundRect(-24, -24, 48, 48, 7);
-        borderGraphics.stroke();
-        borderNode.setSiblingIndex(0);
-    }
-
     /** 创建森林背景、循环雾、倒计时和边缘反馈等运行时视觉节点。 */
     private createRuntimeVisuals(): void {
         if (!this.layoutRoot) {
@@ -537,18 +541,20 @@ export class PlayableGameView extends Component {
                 `MovingFog_${fogIndex + 1}`,
                 this.layoutRoot,
                 "playable/psd/moving-fog/spriteFrame",
-                1200,
-                1200,
+                FOG_TEXTURE_WIDTH,
+                FOG_TEXTURE_HEIGHT,
             );
             /** 雾层透明度组件。 */
             const fogOpacity: UIOpacity = fogNode.addComponent(UIOpacity);
-            fogOpacity.opacity = 150;
+            /** 新素材自身带透明度，按原始透明度完整显示。 */
+            fogOpacity.opacity = 255;
             fogNode.setSiblingIndex(fogIndex + 1);
             this.fogNodes.push(fogNode);
         }
 
         this.createClockVisual();
         this.createFeedbackFlashVisual();
+        this.loadCrosswordSlotSprites();
         this.applyLatestPsdSprites();
         this.configureStaticLabels();
         this.configureEndCardContent();
@@ -580,29 +586,20 @@ export class PlayableGameView extends Component {
         }
     }
 
-    /** 创建左上角白色闹钟轮廓与动态数字。 */
+    /** 使用 PSD 原稿创建左上角闹钟，并叠加动态倒计时数字。 */
     private createClockVisual(): void {
         if (!this.layoutRoot) {
             return;
         }
 
         this.clockNode = this.createUiNode("CountdownClock", this.layoutRoot, 112, 112);
-        /** 闹钟轮廓绘图组件。 */
-        const clockGraphics: Graphics = this.clockNode.addComponent(Graphics);
-        clockGraphics.strokeColor = new Color(255, 255, 255, 255);
-        clockGraphics.lineWidth = 6;
-        clockGraphics.circle(0, 0, 39);
-        clockGraphics.moveTo(-24, 31);
-        clockGraphics.lineTo(-41, 46);
-        clockGraphics.lineTo(-29, 51);
-        clockGraphics.moveTo(24, 31);
-        clockGraphics.lineTo(41, 46);
-        clockGraphics.lineTo(29, 51);
-        clockGraphics.moveTo(-22, -32);
-        clockGraphics.lineTo(-31, -46);
-        clockGraphics.moveTo(22, -32);
-        clockGraphics.lineTo(31, -46);
-        clockGraphics.stroke();
+        this.createSpriteNode(
+            "CountdownClockImage",
+            this.clockNode,
+            "playable/psd/countdown-clock/spriteFrame",
+            102,
+            101,
+        );
 
         this.clockLabel = this.createLabel(
             "CountdownLabel",
@@ -618,19 +615,103 @@ export class PlayableGameView extends Component {
         this.clockLabel.outlineWidth = 3;
     }
 
-    /** 创建覆盖全屏但默认透明的红黄边缘闪光节点。 */
+    /** 加载 PSD 提供的空白和已填字格图片，并刷新当前棋盘。 */
+    private loadCrosswordSlotSprites(): void {
+        resources.load(
+            "playable/psd/crossword-cell-empty/spriteFrame",
+            SpriteFrame,
+            (emptyError: Error | null, emptyFrame: SpriteFrame): void => {
+                if (emptyError) {
+                    console.warn("[Playable] 空白字格素材加载失败。", emptyError);
+                    return;
+                }
+                this.emptySlotSpriteFrame = emptyFrame;
+                this.refreshCrosswordSlotSprites();
+            },
+        );
+        resources.load(
+            "playable/psd/crossword-cell-filled/spriteFrame",
+            SpriteFrame,
+            (filledError: Error | null, filledFrame: SpriteFrame): void => {
+                if (filledError) {
+                    console.warn("[Playable] 已填字格素材加载失败。", filledError);
+                    return;
+                }
+                this.filledSlotSpriteFrame = filledFrame;
+                this.refreshCrosswordSlotSprites();
+            },
+        );
+    }
+
+    /** 根据每个字格当前是否有字母，切换为对应的 PSD 原图。 */
+    private refreshCrosswordSlotSprites(): void {
+        this.crosswordCells.forEach((slotView: WordSlotView): void => {
+            if (!slotView.background || !slotView.letterLabel) {
+                return;
+            }
+            /** 当前字格是否已经填写字母。 */
+            const isFilled: boolean = slotView.letterLabel.string.length > 0;
+            /** 当前字格状态对应的 PSD 图片。 */
+            const targetFrame: SpriteFrame | null = isFilled
+                ? this.filledSlotSpriteFrame
+                : this.emptySlotSpriteFrame;
+            if (targetFrame) {
+                slotView.background.spriteFrame = targetFrame;
+            }
+            slotView.background.color = new Color(255, 255, 255, 255);
+            slotView.background.type = Sprite.Type.SIMPLE;
+            slotView.background.sizeMode = Sprite.SizeMode.CUSTOM;
+        });
+    }
+
+    /** 创建覆盖画面四边但默认透明的 PSD 红黄光带节点。 */
     private createFeedbackFlashVisual(): void {
         if (!this.layoutRoot) {
             return;
         }
 
         this.feedbackFlashNode = this.createUiNode("FeedbackFlash", this.layoutRoot, 1200, 720);
-        this.feedbackFlashGraphics = this.feedbackFlashNode.addComponent(Graphics);
+        this.feedbackEdgeSprites.length = 0;
+        ["Top", "Bottom", "Left", "Right"].forEach((edgeName: string): void => {
+            /** 当前画面边缘的光带节点。 */
+            const edgeNode: Node = this.createUiNode(`Feedback${edgeName}`, this.feedbackFlashNode, 1200, 35);
+            /** 当前画面边缘的光带精灵。 */
+            const edgeSprite: Sprite = edgeNode.addComponent(Sprite);
+            edgeSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+            this.feedbackEdgeSprites.push(edgeSprite);
+        });
         /** 边缘闪光透明度组件。 */
         const flashOpacity: UIOpacity = this.feedbackFlashNode.addComponent(UIOpacity);
         flashOpacity.opacity = 0;
         this.feedbackFlashNode.active = false;
         this.feedbackFlashNode.setSiblingIndex(this.layoutRoot.children.length - 1);
+        this.loadFeedbackSpriteFrames();
+    }
+
+    /** 加载需求提供的红光和黄光原始图片。 */
+    private loadFeedbackSpriteFrames(): void {
+        resources.load(
+            "playable/psd/feedback-red/spriteFrame",
+            SpriteFrame,
+            (redError: Error | null, redFrame: SpriteFrame): void => {
+                if (redError) {
+                    console.warn("[Playable] 红光素材加载失败。", redError);
+                    return;
+                }
+                this.redFeedbackSpriteFrame = redFrame;
+            },
+        );
+        resources.load(
+            "playable/psd/feedback-yellow/spriteFrame",
+            SpriteFrame,
+            (yellowError: Error | null, yellowFrame: SpriteFrame): void => {
+                if (yellowError) {
+                    console.warn("[Playable] 黄光素材加载失败。", yellowError);
+                    return;
+                }
+                this.yellowFeedbackSpriteFrame = yellowFrame;
+            },
+        );
     }
 
     /** 将最新版 PSD 中的主按钮、引导手和文案覆盖到现有编辑器节点。 */
@@ -656,6 +737,11 @@ export class PlayableGameView extends Component {
             return;
         }
 
+        /** 需求中的结算页不显示游戏图标。 */
+        if (this.endCardIconNode) {
+            this.endCardIconNode.active = false;
+        }
+
         /** 结束页旧品牌面板。 */
         const brandPanel: Node | null = this.endCardNode.getChildByName("BrandPanel");
         /** 结束页品牌名称标签。 */
@@ -665,7 +751,13 @@ export class PlayableGameView extends Component {
         if (brandLabel) {
             brandLabel.string = PLAYABLE_CONFIG.brand.gameName.toUpperCase();
             brandLabel.color = new Color(255, 255, 255, 255);
+            brandLabel.horizontalAlign = HorizontalTextAlignment.CENTER;
+            brandLabel.verticalAlign = VerticalTextAlignment.CENTER;
+            brandLabel.overflow = Label.Overflow.SHRINK;
+            brandLabel.node.setPosition(Vec3.ZERO);
         }
+        brandPanel?.getComponent(UITransform)?.setContentSize(660, 120);
+        brandLabel?.node.getComponent(UITransform)?.setContentSize(640, 100);
         brandPanel?.getChildByName("BrandGlow")?.destroy();
         brandPanel?.getChildByName("BrandBackground")?.destroy();
         brandPanel?.getChildByName("SearchIcon")?.destroy();
@@ -681,6 +773,10 @@ export class PlayableGameView extends Component {
             140,
         );
         taglineLabel.isBold = true;
+        taglineLabel.horizontalAlign = HorizontalTextAlignment.CENTER;
+        taglineLabel.verticalAlign = VerticalTextAlignment.CENTER;
+        taglineLabel.overflow = Label.Overflow.SHRINK;
+        taglineLabel.node.setPosition(Vec3.ZERO);
     }
 
     /** 创建背景音乐与短音效播放器，并异步加载全部提供音频。 */
@@ -781,23 +877,34 @@ export class PlayableGameView extends Component {
         /** 当前布局基准高度。 */
         const designHeight: number = isLandscape ? 720 : 1280;
 
-        view.setDesignResolutionSize(designWidth, designHeight, ResolutionPolicy.SHOW_ALL);
+        /**
+         * 横屏扩展逻辑宽度、竖屏扩展逻辑高度，保证 UI 不被裁切；
+         * 背景随后按扩展后的实际可见区域单独铺满。
+         */
+        view.setDesignResolutionSize(
+            designWidth,
+            designHeight,
+            isLandscape ? ResolutionPolicy.FIXED_HEIGHT : ResolutionPolicy.FIXED_WIDTH,
+        );
+
+        /** 当前屏幕比例对应的完整可见逻辑区域。 */
+        const visibleSize: Size = view.getVisibleSize();
 
         /** 设置 Canvas 尺寸，保证动态节点始终以画布中心为原点。 */
         const canvasTransform: UITransform | null = this.node.getComponent(UITransform);
-        canvasTransform?.setContentSize(designWidth, designHeight);
+        canvasTransform?.setContentSize(visibleSize.width, visibleSize.height);
 
         /** 更新布局根节点尺寸。 */
         const rootTransform: UITransform = this.layoutRoot.getComponent(UITransform)!;
-        rootTransform.setContentSize(designWidth, designHeight);
+        rootTransform.setContentSize(visibleSize.width, visibleSize.height);
         /** 更新结束页根节点尺寸。 */
         const endCardTransform: UITransform | null = this.endCardNode?.getComponent(UITransform) ?? null;
-        endCardTransform?.setContentSize(designWidth, designHeight);
+        endCardTransform?.setContentSize(visibleSize.width, visibleSize.height);
         this.layoutRoot.setPosition(Vec3.ZERO);
         this.layoutRoot.setScale(Vec3.ONE);
-        this.redrawBackground(designWidth, designHeight);
-        this.applyBackdropLayout(designWidth, designHeight);
-        this.redrawFeedbackFlash(designWidth, designHeight);
+        this.redrawBackground(visibleSize.width, visibleSize.height);
+        this.applyBackdropLayout(visibleSize.width, visibleSize.height);
+        this.redrawFeedbackFlash(visibleSize.width, visibleSize.height);
 
         if (isLandscape) {
             this.applyLandscapePositions();
@@ -830,17 +937,19 @@ export class PlayableGameView extends Component {
 
     /** 应用竖屏节点位置。 */
     private applyPortraitPositions(): void {
+        /** 当前竖屏相对 720×1280 基准在上下两端增加或减少的空间。 */
+        const verticalEdgeOffset: number = (view.getVisibleSize().height - 1280) / 2;
         this.promptNode?.setPosition(0, -50, 0);
         this.promptNode?.setScale(1.05, 1.05, 1);
         this.applyPromptImageSize(560, 83);
-        this.downloadNode?.setPosition(270, -550, 0);
+        this.downloadNode?.setPosition(270, -550 - verticalEdgeOffset, 0);
         this.downloadNode?.setScale(1, 1, 1);
         this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(false);
         this.applyCrosswordBoardLayout(64, 4, 46);
-        this.boardNode?.setPosition(0, 272, 0);
+        this.boardNode?.setPosition(0, 272 + verticalEdgeOffset, 0);
         this.boardNode?.setScale(1, 1, 1);
-        this.wheelNode?.setPosition(0, -330, 0);
+        this.wheelNode?.setPosition(0, -330 - verticalEdgeOffset, 0);
         this.wheelNode?.setScale(0.96, 0.96, 1);
         this.applyWheelLetterFontSize(92);
         /** 抵消竖屏轮盘缩放，保持 PSD 手势图片的目标显示尺寸。 */
@@ -848,7 +957,7 @@ export class PlayableGameView extends Component {
         this.guideHandNode?.setScale(guideHandScale, guideHandScale, 1);
         this.selectionBannerNode?.setPosition(0, -25, 0);
         this.selectionBannerNode?.setScale(1, 1, 1);
-        this.clockNode?.setPosition(-271, 564, 0);
+        this.clockNode?.setPosition(-271, 564 + verticalEdgeOffset, 0);
         this.applyPortraitEndCardPositions();
     }
 
@@ -894,8 +1003,11 @@ export class PlayableGameView extends Component {
             const slotTransform: UITransform = slotView.node.getComponent(UITransform)!;
             /** 当前字格标签尺寸组件。 */
             const labelTransform: UITransform = slotView.letterLabel.node.getComponent(UITransform)!;
+            /** 当前字格 PSD 背景尺寸组件。 */
+            const backgroundTransform: UITransform = slotView.background.node.getComponent(UITransform)!;
             slotTransform.setContentSize(slotSize, slotSize);
             labelTransform.setContentSize(slotSize, slotSize);
+            backgroundTransform.setContentSize(slotSize, slotSize);
             slotView.background.sizeMode = Sprite.SizeMode.CUSTOM;
             slotView.letterLabel.fontSize = fontSize;
             slotView.letterLabel.lineHeight = fontSize + 5;
@@ -906,24 +1018,9 @@ export class PlayableGameView extends Component {
                 0,
             );
 
-            /** 当前字格描边节点。 */
+            /** 清理早期版本为字格额外绘制的描边，避免与 PSD 边框形成间隙。 */
             const borderNode: Node | null = slotView.node.getChildByName("CellBorder");
-            /** 当前字格描边绘图组件。 */
-            const borderGraphics: Graphics | null = borderNode?.getComponent(Graphics) ?? null;
-            borderNode?.getComponent(UITransform)?.setContentSize(slotSize, slotSize);
-            if (borderGraphics) {
-                borderGraphics.clear();
-                borderGraphics.strokeColor = SLOT_BORDER_COLOR;
-                borderGraphics.lineWidth = 2;
-                borderGraphics.roundRect(
-                    -slotSize / 2 + 1,
-                    -slotSize / 2 + 1,
-                    slotSize - 2,
-                    slotSize - 2,
-                    7,
-                );
-                borderGraphics.stroke();
-            }
+            borderNode?.destroy();
         });
 
         /** 棋盘中按照需求顺序展示的全部单词。 */
@@ -959,34 +1056,57 @@ export class PlayableGameView extends Component {
         });
     }
 
-    /** 按当前设计分辨率让森林背景和双雾层覆盖整个画布。 */
+    /** 森林背景铺满画布，烟雾保持原比例贴合屏幕宽度并与底边对齐。 */
     private applyBackdropLayout(width: number, height: number): void {
         /** 1200 方形素材覆盖当前画布所需的统一缩放。 */
-        const coverScale: number = Math.max(width / 1200, height / 1200);
-        this.backgroundSpriteNode?.setScale(coverScale, coverScale, 1);
-        this.fogSpan = 1200 * coverScale;
+        const backgroundCoverScale: number = Math.max(width / 1200, height / 1200);
+        this.backgroundSpriteNode?.setScale(backgroundCoverScale, backgroundCoverScale, 1);
+        /** 烟雾仅按屏幕宽度等比缩放，不向上铺满整个画面。 */
+        const fogWidthScale: number = width / FOG_TEXTURE_WIDTH;
+        /** 缩放后烟雾的实际显示高度。 */
+        const renderedFogHeight: number = FOG_TEXTURE_HEIGHT * fogWidthScale;
+        this.fogSpan = FOG_TEXTURE_WIDTH * fogWidthScale;
+        this.fogBottomY = -height / 2 + renderedFogHeight / 2;
         this.fogOffset = Math.max(-this.fogSpan, Math.min(0, this.fogOffset));
         this.fogNodes.forEach((fogNode: Node, fogIndex: number): void => {
-            fogNode.setScale(coverScale, coverScale, 1);
-            fogNode.setPosition(this.fogOffset + fogIndex * this.fogSpan, 0, 0);
+            fogNode.setScale(fogWidthScale, fogWidthScale, 1);
+            fogNode.setPosition(
+                this.fogOffset + fogIndex * this.fogSpan,
+                this.fogBottomY,
+                0,
+            );
         });
     }
 
-    /** 按当前画布大小重绘四周闪光边框。 */
+    /** 按当前画布大小排列四条 PSD 光带，并保持各边渐变朝向正确。 */
     private redrawFeedbackFlash(width: number, height: number): void {
-        if (!this.feedbackFlashNode || !this.feedbackFlashGraphics) {
+        if (!this.feedbackFlashNode || this.feedbackEdgeSprites.length < 4) {
             return;
         }
         this.feedbackFlashNode.getComponent(UITransform)?.setContentSize(width, height);
-        this.feedbackFlashGraphics.clear();
-        this.feedbackFlashGraphics.lineWidth = 32;
-        this.feedbackFlashGraphics.rect(
-            -width / 2 + 16,
-            -height / 2 + 16,
-            width - 32,
-            height - 32,
-        );
-        this.feedbackFlashGraphics.stroke();
+        /** 原始光带厚度。 */
+        const edgeThickness: number = 35;
+        /** 上边光带节点。 */
+        const topNode: Node = this.feedbackEdgeSprites[0].node;
+        /** 下边光带节点。 */
+        const bottomNode: Node = this.feedbackEdgeSprites[1].node;
+        /** 左边光带节点。 */
+        const leftNode: Node = this.feedbackEdgeSprites[2].node;
+        /** 右边光带节点。 */
+        const rightNode: Node = this.feedbackEdgeSprites[3].node;
+
+        topNode.getComponent(UITransform)?.setContentSize(width, edgeThickness);
+        bottomNode.getComponent(UITransform)?.setContentSize(width, edgeThickness);
+        leftNode.getComponent(UITransform)?.setContentSize(height, edgeThickness);
+        rightNode.getComponent(UITransform)?.setContentSize(height, edgeThickness);
+        topNode.setPosition(0, height / 2 - edgeThickness / 2, 0);
+        bottomNode.setPosition(0, -height / 2 + edgeThickness / 2, 0);
+        leftNode.setPosition(-width / 2 + edgeThickness / 2, 0, 0);
+        rightNode.setPosition(width / 2 - edgeThickness / 2, 0, 0);
+        topNode.setRotationFromEuler(0, 0, 0);
+        bottomNode.setRotationFromEuler(0, 0, 180);
+        leftNode.setRotationFromEuler(0, 0, 90);
+        rightNode.setRotationFromEuler(0, 0, 270);
     }
 
     /** 更新圆形下载按钮和内部 PSD 图标尺寸。 */
@@ -1085,24 +1205,54 @@ export class PlayableGameView extends Component {
 
     /** 应用横屏结束页节点位置。 */
     private applyLandscapeEndCardPositions(): void {
-        this.endCardIconNode?.setPosition(0, 205, 0);
-        this.endCardIconNode?.setScale(1.25, 1.25, 1);
-        this.brandNode?.setPosition(0, 105, 0);
+        this.endCardIconNode && (this.endCardIconNode.active = false);
+        this.brandNode?.setPosition(0, 155, 0);
         this.brandNode?.setScale(1, 1, 1);
-        this.endCardNode?.getChildByName("EndCardTagline")?.setPosition(0, -5, 0);
-        this.playNowNode?.setPosition(0, -165, 0);
+        this.brandNode?.getComponent(UITransform)?.setContentSize(660, 110);
+        /** 横屏结算页标题标签。 */
+        const landscapeBrandLabel: Label | null = this.brandNode
+            ?.getChildByName("BrandLabel")
+            ?.getComponent(Label) ?? null;
+        if (landscapeBrandLabel) {
+            landscapeBrandLabel.fontSize = 58;
+            landscapeBrandLabel.lineHeight = 68;
+            landscapeBrandLabel.node.getComponent(UITransform)?.setContentSize(640, 100);
+        }
+        /** 横屏结算页两行宣传语。 */
+        const landscapeTagline: Node | null = this.endCardNode?.getChildByName("EndCardTagline") ?? null;
+        landscapeTagline?.setPosition(0, -15, 0);
+        landscapeTagline?.getComponent(UITransform)?.setContentSize(620, 150);
+        this.playNowNode?.setPosition(0, -205, 0);
         this.playNowNode?.setScale(1, 1, 1);
         this.playNowNode?.getComponent(UITransform)?.setContentSize(430, 113);
     }
 
     /** 应用竖屏结束页节点位置。 */
     private applyPortraitEndCardPositions(): void {
-        this.endCardIconNode?.setPosition(0, 345, 0);
-        this.endCardIconNode?.setScale(1.65, 1.65, 1);
-        this.brandNode?.setPosition(0, 205, 0);
+        this.endCardIconNode && (this.endCardIconNode.active = false);
+        this.brandNode?.setPosition(0, 238, 0);
         this.brandNode?.setScale(1.15, 1.15, 1);
-        this.endCardNode?.getChildByName("EndCardTagline")?.setPosition(0, 35, 0);
-        this.playNowNode?.setPosition(0, -165, 0);
+        this.brandNode?.getComponent(UITransform)?.setContentSize(650, 120);
+        /** 竖屏结算页标题标签。 */
+        const portraitBrandLabel: Label | null = this.brandNode
+            ?.getChildByName("BrandLabel")
+            ?.getComponent(Label) ?? null;
+        if (portraitBrandLabel) {
+            portraitBrandLabel.fontSize = 64;
+            portraitBrandLabel.lineHeight = 74;
+            portraitBrandLabel.node.getComponent(UITransform)?.setContentSize(630, 108);
+        }
+        /** 竖屏结算页两行宣传语。 */
+        const portraitTagline: Node | null = this.endCardNode?.getChildByName("EndCardTagline") ?? null;
+        portraitTagline?.setPosition(0, -58, 0);
+        portraitTagline?.getComponent(UITransform)?.setContentSize(640, 180);
+        /** 竖屏宣传语标签。 */
+        const portraitTaglineLabel: Label | null = portraitTagline?.getComponent(Label) ?? null;
+        if (portraitTaglineLabel) {
+            portraitTaglineLabel.fontSize = 58;
+            portraitTaglineLabel.lineHeight = 68;
+        }
+        this.playNowNode?.setPosition(0, -300, 0);
         this.playNowNode?.setScale(1.08, 1.08, 1);
         this.playNowNode?.getComponent(UITransform)?.setContentSize(500, 132);
     }
@@ -1729,6 +1879,19 @@ export class PlayableGameView extends Component {
 
     /** 按指定颜色更新单个圆角字格精灵。 */
     private setSlotColor(slotBackground: Sprite, color: Color): void {
+        /** 绿色状态使用 PSD 已填字格，其余状态使用 PSD 空白字格。 */
+        const isFilled: boolean = color.r === FILLED_SLOT_COLOR.r
+            && color.g === FILLED_SLOT_COLOR.g
+            && color.b === FILLED_SLOT_COLOR.b;
+        /** 当前状态对应的 PSD 字格图片。 */
+        const targetFrame: SpriteFrame | null = isFilled
+            ? this.filledSlotSpriteFrame
+            : this.emptySlotSpriteFrame;
+        if (targetFrame) {
+            slotBackground.spriteFrame = targetFrame;
+            slotBackground.color = new Color(255, 255, 255, 255);
+            return;
+        }
         slotBackground.color = color;
     }
 
@@ -1862,21 +2025,36 @@ export class PlayableGameView extends Component {
 
     /** 以指定颜色闪烁一次画面四周。 */
     private showFeedbackFlash(color: Color): void {
-        if (!this.feedbackFlashNode || !this.feedbackFlashGraphics) {
+        if (!this.feedbackFlashNode || this.feedbackEdgeSprites.length < 4) {
             return;
         }
+        /** 错误反馈使用红光，其余收藏词和重复词反馈使用黄光。 */
+        const targetFrame: SpriteFrame | null = color.r === WRONG_FLASH_COLOR.r
+            && color.g === WRONG_FLASH_COLOR.g
+            && color.b === WRONG_FLASH_COLOR.b
+            ? this.redFeedbackSpriteFrame
+            : this.yellowFeedbackSpriteFrame;
+        if (!targetFrame) {
+            return;
+        }
+        this.feedbackEdgeSprites.forEach((edgeSprite: Sprite): void => {
+            edgeSprite.spriteFrame = targetFrame;
+            edgeSprite.color = new Color(255, 255, 255, 255);
+            edgeSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        });
         /** 当前画布逻辑尺寸。 */
         const visibleSize: Size = view.getVisibleSize();
-        this.feedbackFlashGraphics.strokeColor = color;
         this.redrawFeedbackFlash(visibleSize.width, visibleSize.height);
         /** 边缘闪光透明度组件。 */
         const flashOpacity: UIOpacity = this.feedbackFlashNode.getComponent(UIOpacity)!;
         Tween.stopAllByTarget(flashOpacity);
         this.feedbackFlashNode.active = true;
         this.feedbackFlashNode.setSiblingIndex(this.layoutRoot!.children.length - 1);
-        flashOpacity.opacity = 255;
+        flashOpacity.opacity = 0;
         tween(flashOpacity)
-            .to(0.32, { opacity: 0 }, { easing: "sineOut" })
+            .to(0.45, { opacity: 255 }, { easing: "sineOut" })
+            .delay(0.5)
+            .to(0.45, { opacity: 0 }, { easing: "sineIn" })
             .call((): void => {
                 if (this.feedbackFlashNode) {
                     this.feedbackFlashNode.active = false;

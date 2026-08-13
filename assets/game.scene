@@ -8525,7 +8525,7 @@
       "a": 255
     },
     "_spriteFrame": {
-      "__uuid__": "50d765f0-f081-4e34-a5cc-0f856029ae45@f9941",
+      "__uuid__": "f9785e4d-2745-447a-a151-831d2c5e8a92@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_type": 0,
@@ -10774,7 +10774,7 @@
       "a": 255
     },
     "_spriteFrame": {
-      "__uuid__": "5a357a74-3a32-4b26-94fe-ec09ffac138e@f9941",
+      "__uuid__": "93e7ed3f-1cd2-4a89-b7ea-56fdaf0f7d31@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_type": 0,
