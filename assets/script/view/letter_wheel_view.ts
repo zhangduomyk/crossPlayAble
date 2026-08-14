@@ -20,7 +20,7 @@ export class LetterWheelView extends Component {
     public letterNodes: Node[] = [];
 
     /** 字母到圆心的布局半径。 */
-    private readonly letterRadius: number = 154;
+    private readonly letterRadius: number = 145;
 
     /** 根据字符串重新配置字盘字母。 */
     public configure(letters: string): void {

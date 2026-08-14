@@ -2,6 +2,7 @@ import {
     _decorator,
     AudioClip,
     AudioSource,
+    BitmapFont,
     Color,
     Component,
     EventTouch,
@@ -240,6 +241,12 @@ export class PlayableGameView extends Component {
     /** 当前倒计时剩余秒数。 */
     private remainingSeconds: number = PLAYABLE_CONFIG.countdownSeconds;
 
+    /** 右下角由 PSD 原图组成的完整安装按钮节点。 */
+    private installPanelImageNode: Node | null = null;
+
+    /** 结算页顶部的 CROSSWORD QUEST 品牌图节点。 */
+    private endCardLogoNode: Node | null = null;
+
     /** 倒计时最后五秒的抖动动画是否已经启动。 */
     private hasStartedClockWarning: boolean = false;
 
@@ -414,6 +421,7 @@ export class PlayableGameView extends Component {
             legacySelectionBackground.active = false;
         }
         this.promptNode && (this.promptNode.active = false);
+        /** 独立下载图标继续显示并保留原有呼吸动画。 */
         this.downloadNode && (this.downloadNode.active = !shouldHidePlayableDownload());
         this.installPanelNode && (this.installPanelNode.active = !shouldHidePlayableDownload());
     }
@@ -584,6 +592,19 @@ export class PlayableGameView extends Component {
         if (installLabel) {
             installLabel.string = PLAYABLE_CONFIG.downloadButtonText;
         }
+
+        if (this.installPanelNode) {
+            this.installPanelNode.children.forEach((childNode: Node): void => {
+                childNode.active = false;
+            });
+            this.installPanelImageNode = this.createSpriteNode(
+                "InstallPanelImage",
+                this.installPanelNode,
+                "playable/psd/install-panel/spriteFrame",
+                240,
+                84,
+            );
+        }
     }
 
     /** 使用 PSD 原稿创建左上角闹钟，并叠加动态倒计时数字。 */
@@ -592,27 +613,41 @@ export class PlayableGameView extends Component {
             return;
         }
 
-        this.clockNode = this.createUiNode("CountdownClock", this.layoutRoot, 112, 112);
+        this.clockNode = this.createUiNode("CountdownClock", this.layoutRoot, 92, 92);
         this.createSpriteNode(
             "CountdownClockImage",
             this.clockNode,
             "playable/psd/countdown-clock/spriteFrame",
-            102,
-            101,
+            84,
+            83,
         );
 
         this.clockLabel = this.createLabel(
             "CountdownLabel",
             this.clockNode,
             String(this.remainingSeconds),
-            42,
+            36,
             new Color(255, 255, 255, 255),
-            90,
-            70,
+            76,
+            58,
         );
         this.clockLabel.isBold = true;
-        this.clockLabel.outlineColor = new Color(35, 45, 38, 255);
-        this.clockLabel.outlineWidth = 3;
+        this.clockLabel.outlineWidth = 0;
+        /** 闹钟原图的表盘圆心比整张图片中心低约七像素。 */
+        this.clockLabel.node.setPosition(3, 4, 0);
+        resources.load(
+            "playable/fonts/countdown-number",
+            BitmapFont,
+            (fontError: Error | null, bitmapFont: BitmapFont): void => {
+                if (fontError || !this.clockLabel?.node.isValid) {
+                    console.warn("[Playable] 倒计时描边数字字体加载失败。", fontError);
+                    return;
+                }
+                this.clockLabel.font = bitmapFont;
+                this.clockLabel.fontSize = 42;
+                this.clockLabel.lineHeight = 51;
+            },
+        );
     }
 
     /** 加载 PSD 提供的空白和已填字格图片，并刷新当前棋盘。 */
@@ -749,18 +784,21 @@ export class PlayableGameView extends Component {
             ?.getChildByName("BrandLabel")
             ?.getComponent(Label) ?? null;
         if (brandLabel) {
-            brandLabel.string = PLAYABLE_CONFIG.brand.gameName.toUpperCase();
-            brandLabel.color = new Color(255, 255, 255, 255);
-            brandLabel.horizontalAlign = HorizontalTextAlignment.CENTER;
-            brandLabel.verticalAlign = VerticalTextAlignment.CENTER;
-            brandLabel.overflow = Label.Overflow.SHRINK;
-            brandLabel.node.setPosition(Vec3.ZERO);
+            brandLabel.node.active = false;
         }
         brandPanel?.getComponent(UITransform)?.setContentSize(660, 120);
-        brandLabel?.node.getComponent(UITransform)?.setContentSize(640, 100);
         brandPanel?.getChildByName("BrandGlow")?.destroy();
         brandPanel?.getChildByName("BrandBackground")?.destroy();
         brandPanel?.getChildByName("SearchIcon")?.destroy();
+        if (brandPanel) {
+            this.endCardLogoNode = this.createSpriteNode(
+                "EndCardLogo",
+                brandPanel,
+                "playable/psd/endcard-logo/spriteFrame",
+                563,
+                155,
+            );
+        }
 
         /** 结束页宣传语标签。 */
         const taglineLabel: Label = this.createLabel(
@@ -836,6 +874,9 @@ export class PlayableGameView extends Component {
                     return;
                 }
                 this.layoutRoot.getComponentsInChildren(Label).forEach((label: Label): void => {
+                    if (label === this.clockLabel) {
+                        return;
+                    }
                     label.font = font;
                 });
             },
@@ -928,7 +969,7 @@ export class PlayableGameView extends Component {
         this.wheelNode?.setPosition(270, -35, 0);
         this.wheelNode?.setScale(1, 1, 1);
         this.applyWheelLetterFontSize(72);
-        this.guideHandNode?.setScale(1, 1, 1);
+        this.guideHandNode?.setScale(0.47, 0.47, 1);
         this.selectionBannerNode?.setPosition(270, 242, 0);
         this.selectionBannerNode?.setScale(1, 1, 1);
         this.clockNode?.setPosition(-530, 290, 0);
@@ -939,25 +980,25 @@ export class PlayableGameView extends Component {
     private applyPortraitPositions(): void {
         /** 当前竖屏相对 720×1280 基准在上下两端增加或减少的空间。 */
         const verticalEdgeOffset: number = (view.getVisibleSize().height - 1280) / 2;
-        this.promptNode?.setPosition(0, -50, 0);
-        this.promptNode?.setScale(1.05, 1.05, 1);
-        this.applyPromptImageSize(560, 83);
+        this.promptNode?.setPosition(0, -66, 0);
+        this.promptNode?.setScale(1, 1, 1);
+        this.applyPromptImageSize(420, 62);
         this.downloadNode?.setPosition(270, -550 - verticalEdgeOffset, 0);
         this.downloadNode?.setScale(1, 1, 1);
         this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(false);
-        this.applyCrosswordBoardLayout(64, 4, 46);
-        this.boardNode?.setPosition(0, 272 + verticalEdgeOffset, 0);
+        this.applyCrosswordBoardLayout(56, 4, 40);
+        this.boardNode?.setPosition(0, 318 + verticalEdgeOffset, 0);
         this.boardNode?.setScale(1, 1, 1);
-        this.wheelNode?.setPosition(0, -330 - verticalEdgeOffset, 0);
+        this.wheelNode?.setPosition(0, -358 - verticalEdgeOffset, 0);
         this.wheelNode?.setScale(0.96, 0.96, 1);
-        this.applyWheelLetterFontSize(92);
+        this.applyWheelLetterFontSize(86);
         /** 抵消竖屏轮盘缩放，保持 PSD 手势图片的目标显示尺寸。 */
-        const guideHandScale: number = 1 / 0.96;
+        const guideHandScale: number = 0.47 / 0.96;
         this.guideHandNode?.setScale(guideHandScale, guideHandScale, 1);
-        this.selectionBannerNode?.setPosition(0, -25, 0);
+        this.selectionBannerNode?.setPosition(0, -66, 0);
         this.selectionBannerNode?.setScale(1, 1, 1);
-        this.clockNode?.setPosition(-271, 564 + verticalEdgeOffset, 0);
+        this.clockNode?.setPosition(-271, 568 + verticalEdgeOffset, 0);
         this.applyPortraitEndCardPositions();
     }
 
@@ -1130,7 +1171,7 @@ export class PlayableGameView extends Component {
         /** 当前设计分辨率下实际可见的逻辑区域。 */
         const visibleSize: Size = view.getVisibleSize();
         /** 安装组合与页面右下边缘保持的安全间距。 */
-        const safeMargin: number = 12;
+        const safeMargin: number = 0;
         /** 品牌图标节点。 */
         const gameIconNode: Node | null = this.installPanelNode.getChildByName("DownloadGameIcon");
         /** 安装按钮节点。 */
@@ -1144,6 +1185,9 @@ export class PlayableGameView extends Component {
             ?.getComponent(Label) ?? null;
         /** 安装面板尺寸组件。 */
         const panelTransform: UITransform = this.installPanelNode.getComponent(UITransform)!;
+        /** PSD 完整安装按钮的尺寸组件。 */
+        const panelImageTransform: UITransform | null = this.installPanelImageNode
+            ?.getComponent(UITransform) ?? null;
         /** 品牌图标尺寸组件。 */
         const gameIconTransform: UITransform | null = gameIconNode?.getComponent(UITransform) ?? null;
         /** 安装按钮尺寸组件。 */
@@ -1159,15 +1203,16 @@ export class PlayableGameView extends Component {
 
         if (isLandscape) {
             /** 横屏安装组合相对节点中心的可见右边界。 */
-            const landscapeRightOffset: number = 115;
+            const landscapeRightOffset: number = 100;
             /** 横屏安装组合相对节点中心的可见下边界。 */
-            const landscapeBottomOffset: number = 32;
+            const landscapeBottomOffset: number = 35;
             this.installPanelNode.setPosition(
                 visibleSize.width / 2 - safeMargin - landscapeRightOffset,
                 -visibleSize.height / 2 + safeMargin + landscapeBottomOffset,
                 0,
             );
             panelTransform.setContentSize(240, 70);
+            panelImageTransform?.setContentSize(200, 70);
             gameIconNode?.setPosition(-90, 0, 0);
             gameIconTransform?.setContentSize(58, 58);
             installButtonNode?.setPosition(30, 0, 0);
@@ -1182,15 +1227,16 @@ export class PlayableGameView extends Component {
         }
 
         /** 竖屏安装组合相对节点中心的可见右边界。 */
-        const portraitRightOffset: number = 138;
+        const portraitRightOffset: number = 120;
         /** 竖屏安装组合相对节点中心的可见下边界。 */
-        const portraitBottomOffset: number = 43;
+        const portraitBottomOffset: number = 42;
         this.installPanelNode.setPosition(
             visibleSize.width / 2 - safeMargin - portraitRightOffset,
             -visibleSize.height / 2 + safeMargin + portraitBottomOffset,
             0,
         );
         panelTransform.setContentSize(280, 84);
+        panelImageTransform?.setContentSize(240, 84);
         gameIconNode?.setPosition(-72, 0, 0);
         gameIconTransform?.setContentSize(72, 72);
         installButtonNode?.setPosition(58, 0, 0);
@@ -1209,6 +1255,7 @@ export class PlayableGameView extends Component {
         this.brandNode?.setPosition(0, 155, 0);
         this.brandNode?.setScale(1, 1, 1);
         this.brandNode?.getComponent(UITransform)?.setContentSize(660, 110);
+        this.endCardLogoNode?.getComponent(UITransform)?.setContentSize(400, 110);
         /** 横屏结算页标题标签。 */
         const landscapeBrandLabel: Label | null = this.brandNode
             ?.getChildByName("BrandLabel")
@@ -1233,6 +1280,7 @@ export class PlayableGameView extends Component {
         this.brandNode?.setPosition(0, 238, 0);
         this.brandNode?.setScale(1.15, 1.15, 1);
         this.brandNode?.getComponent(UITransform)?.setContentSize(650, 120);
+        this.endCardLogoNode?.getComponent(UITransform)?.setContentSize(436, 120);
         /** 竖屏结算页标题标签。 */
         const portraitBrandLabel: Label | null = this.brandNode
             ?.getChildByName("BrandLabel")
@@ -1417,6 +1465,10 @@ export class PlayableGameView extends Component {
         this.isTracing = false;
         /** 当前连线组成的单词。 */
         const selectedWord: string = this.getSelectedWord();
+        if (selectedWord.length <= 1) {
+            this.resetTraceState();
+            return;
+        }
         /** 当前目标步骤配置。 */
         const currentStep: WordStepConfig | undefined = PLAYABLE_CONFIG.wordSteps[this.currentStepIndex];
         if (currentStep && selectedWord === currentStep.word) {
@@ -1528,6 +1580,8 @@ export class PlayableGameView extends Component {
         this.traceGraphics.clear();
         this.traceGraphics.strokeColor = SELECTION_COLOR;
         this.traceGraphics.lineWidth = TRACE_LINE_WIDTH;
+        this.traceGraphics.lineCap = Graphics.LineCap.ROUND;
+        this.traceGraphics.lineJoin = Graphics.LineJoin.ROUND;
         /** 首个选中字母的位置。 */
         const firstPosition: Vec3 = this.wheelLetterNodes[this.selectedLetterIndices[0]].position;
         this.traceGraphics.moveTo(firstPosition.x, firstPosition.y);
@@ -1924,7 +1978,7 @@ export class PlayableGameView extends Component {
         });
     }
 
-    /** 隐藏并停止当前逆时针引导手。 */
+    /** 立即隐藏并停止当前逆时针引导手，避免玩家连线时仍残留淡出动画。 */
     private hideGuideHand(): void {
         if (!this.guideHandNode) {
             return;
@@ -1936,14 +1990,8 @@ export class PlayableGameView extends Component {
         const handOpacity: UIOpacity = this.guideHandNode.getComponent(UIOpacity)
             ?? this.guideHandNode.addComponent(UIOpacity);
         Tween.stopAllByTarget(handOpacity);
-        tween(handOpacity)
-            .to(0.3, { opacity: 0 }, { easing: "sineOut" })
-            .call((): void => {
-                if (this.guideHandNode) {
-                    this.guideHandNode.active = false;
-                }
-            })
-            .start();
+        handOpacity.opacity = 0;
+        this.guideHandNode.active = false;
     }
 
     /** 首次有效交互时启动背景音乐和三十秒倒计时。 */
@@ -2252,6 +2300,8 @@ export class PlayableGameView extends Component {
         this.traceGraphics.clear();
         this.traceGraphics.strokeColor = SELECTION_COLOR;
         this.traceGraphics.lineWidth = TRACE_LINE_WIDTH;
+        this.traceGraphics.lineCap = Graphics.LineCap.ROUND;
+        this.traceGraphics.lineJoin = Graphics.LineJoin.ROUND;
         /** 引导路径的首个字母中心。 */
         const firstPosition: Vec3 = this.guideLetterCenterPositions[0];
         this.traceGraphics.moveTo(firstPosition.x, firstPosition.y);
@@ -2313,7 +2363,7 @@ export class PlayableGameView extends Component {
         }
     }
 
-    /** 循环播放右下 PSD 下载按钮原地缩放的呼吸动画。 */
+    /** 循环播放独立下载图标原地缩放的呼吸动画。 */
     private startDownloadIconAnimation(): void {
         if (!this.downloadNode) {
             return;
