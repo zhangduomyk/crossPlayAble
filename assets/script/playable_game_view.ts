@@ -56,8 +56,8 @@ const ACTIVE_SLOT_COLOR: Color = new Color(255, 255, 255, 255);
 /** 已填写字格颜色，PSD 图片加载前用于临时显示。 */
 const FILLED_SLOT_COLOR: Color = new Color(83, 145, 61, 255);
 
-/** 字母连线、选中圆和组合横条使用的深绿色。 */
-const SELECTION_COLOR: Color = new Color(29, 64, 55, 255);
+/** 字母连线、选中圆和组合横条使用的新 PSD 深绿色。 */
+const SELECTION_COLOR: Color = new Color(44, 62, 0, 255);
 
 /** 错误单词触发的红色边缘闪光。 */
 const WRONG_FLASH_COLOR: Color = new Color(255, 80, 80, 230);
@@ -68,11 +68,11 @@ const REPEAT_FLASH_COLOR: Color = new Color(255, 215, 55, 230);
 /** 玩家连线和引导演示统一使用的加粗线宽。 */
 const TRACE_LINE_WIDTH: number = 20;
 
-/** 新烟雾原图宽度。 */
+/** 新 PSD 横向烟雾的优化后纹理宽度。 */
 const FOG_TEXTURE_WIDTH: number = 2820;
 
-/** 新烟雾原图高度。 */
-const FOG_TEXTURE_HEIGHT: number = 854;
+/** 新 PSD 横向烟雾按原比例缩放后的纹理高度。 */
+const FOG_TEXTURE_HEIGHT: number = 735;
 
 /** 单个字谜单元格的二维网格坐标。 */
 interface CrosswordCellCoordinate {
@@ -90,16 +90,31 @@ interface CrosswordWordLayout {
     readonly cells: readonly CrosswordCellCoordinate[];
 }
 
-/** 与需求稿一致的八个单词字谜布局。 */
+/** 鼓励横幅对应的 PSD 资源与显示尺寸。 */
+interface PraiseVisualConfig {
+    /** resources 中的 SpriteFrame 路径。 */
+    readonly resourcePath: string;
+    /** 横幅显示宽度。 */
+    readonly width: number;
+    /** 横幅显示高度。 */
+    readonly height: number;
+}
+
+/** 三类填词进度对应的新 PSD 鼓励横幅。 */
+const PRAISE_VISUALS: Readonly<Record<string, PraiseVisualConfig>> = {
+    Nice: { resourcePath: "playable/psd/praise-nice/spriteFrame", width: 180, height: 58 },
+    Brilliant: { resourcePath: "playable/psd/praise-brilliant/spriteFrame", width: 260, height: 52 },
+    Spectacular: { resourcePath: "playable/psd/praise-spectacular/spriteFrame", width: 330, height: 51 },
+};
+
+/** 与 2026-08-13 需求稿一致的六个单词字谜布局。 */
 const CROSSWORD_LAYOUT: readonly CrosswordWordLayout[] = [
-    { word: "FEST", cells: [{ column: 0, row: 0 }, { column: 0, row: 1 }, { column: 0, row: 2 }, { column: 0, row: 3 }] },
-    { word: "SOFT", cells: [{ column: 0, row: 2 }, { column: 1, row: 2 }, { column: 2, row: 2 }, { column: 3, row: 2 }] },
-    { word: "FOREST", cells: [{ column: 3, row: 0 }, { column: 4, row: 0 }, { column: 5, row: 0 }, { column: 6, row: 0 }, { column: 7, row: 0 }, { column: 8, row: 0 }] },
-    { word: "FORTE", cells: [{ column: 5, row: -2 }, { column: 5, row: -1 }, { column: 5, row: 0 }, { column: 5, row: 1 }, { column: 5, row: 2 }] },
-    { word: "FORES", cells: [{ column: 1, row: 4 }, { column: 2, row: 4 }, { column: 3, row: 4 }, { column: 4, row: 4 }, { column: 5, row: 4 }] },
-    { word: "FETOR", cells: [{ column: 3, row: 0 }, { column: 3, row: 1 }, { column: 3, row: 2 }, { column: 3, row: 3 }, { column: 3, row: 4 }] },
-    { word: "FORT", cells: [{ column: 1, row: 4 }, { column: 1, row: 5 }, { column: 1, row: 6 }, { column: 1, row: 7 }] },
-    { word: "REFS", cells: [{ column: 1, row: 6 }, { column: 2, row: 6 }, { column: 3, row: 6 }, { column: 4, row: 6 }] },
+    { word: "EAR", cells: [{ column: 4, row: 7 }, { column: 5, row: 7 }, { column: 6, row: 7 }] },
+    { word: "EAST", cells: [{ column: 0, row: 2 }, { column: 1, row: 2 }, { column: 2, row: 2 }, { column: 3, row: 2 }] },
+    { word: "SEAT", cells: [{ column: 1, row: 6 }, { column: 2, row: 6 }, { column: 3, row: 6 }, { column: 4, row: 6 }] },
+    { word: "RATE", cells: [{ column: 4, row: 4 }, { column: 4, row: 5 }, { column: 4, row: 6 }, { column: 4, row: 7 }] },
+    { word: "TEARS", cells: [{ column: 1, row: 0 }, { column: 1, row: 1 }, { column: 1, row: 2 }, { column: 1, row: 3 }, { column: 1, row: 4 }] },
+    { word: "STARE", cells: [{ column: 1, row: 4 }, { column: 2, row: 4 }, { column: 3, row: 4 }, { column: 4, row: 4 }, { column: 5, row: 4 }] },
 ];
 
 /** 游戏初始界面组件，负责创建素材节点并处理横竖屏布局。 */
@@ -247,6 +262,9 @@ export class PlayableGameView extends Component {
     /** 结算页顶部的 CROSSWORD QUEST 品牌图节点。 */
     private endCardLogoNode: Node | null = null;
 
+    /** 结算页中由新 PSD 导出的宣传语节点。 */
+    private endCardTaglineNode: Node | null = null;
+
     /** 倒计时最后五秒的抖动动画是否已经启动。 */
     private hasStartedClockWarning: boolean = false;
 
@@ -325,6 +343,9 @@ export class PlayableGameView extends Component {
     /** 正确反馈期间是否锁定输入。 */
     private isInputLocked: boolean = false;
 
+    /** 正确填词落位动画代次，用于忽略超时或结算后的旧回调。 */
+    private correctSettlementGeneration: number = 0;
+
     /** 是否已经显示最终品牌结束页。 */
     private isEndCardVisible: boolean = false;
 
@@ -343,6 +364,7 @@ export class PlayableGameView extends Component {
 
     /** 组件销毁时移除屏幕变化监听。 */
     protected onDestroy(): void {
+        this.correctSettlementGeneration += 1;
         view.off("canvas-resize", this.applyResponsiveLayout, this);
         this.unschedule(this.handleGuideIdleTimeout);
         this.unschedule(this.handleCountdownTick);
@@ -766,7 +788,7 @@ export class PlayableGameView extends Component {
         }
     }
 
-    /** 配置结束页品牌名称、宣传语并移除旧搜索框装饰。 */
+    /** 配置结束页品牌名称、PSD 宣传语并移除旧搜索框装饰。 */
     private configureEndCardContent(): void {
         if (!this.endCardNode) {
             return;
@@ -800,21 +822,14 @@ export class PlayableGameView extends Component {
             );
         }
 
-        /** 结束页宣传语标签。 */
-        const taglineLabel: Label = this.createLabel(
+        this.endCardTaglineNode = this.createSpriteNode(
             "EndCardTagline",
             this.endCardNode,
-            "The most beautiful\nword game!",
-            48,
-            new Color(255, 255, 255, 255),
-            620,
-            140,
+            "playable/psd/endcard-tagline/spriteFrame",
+            380,
+            97,
         );
-        taglineLabel.isBold = true;
-        taglineLabel.horizontalAlign = HorizontalTextAlignment.CENTER;
-        taglineLabel.verticalAlign = VerticalTextAlignment.CENTER;
-        taglineLabel.overflow = Label.Overflow.SHRINK;
-        taglineLabel.node.setPosition(Vec3.ZERO);
+        this.endCardTaglineNode.setPosition(Vec3.ZERO);
     }
 
     /** 创建背景音乐与短音效播放器，并异步加载全部提供音频。 */
@@ -958,12 +973,13 @@ export class PlayableGameView extends Component {
     private applyLandscapePositions(): void {
         this.promptNode?.setPosition(270, 245, 0);
         this.promptNode?.setScale(1, 1, 1);
-        this.applyPromptImageSize(620, 92);
+        this.applyPromptImageSize(420, 42);
         this.downloadNode?.setPosition(450, -230, 0);
         this.downloadNode?.setScale(1, 1, 1);
         this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(true);
-        this.applyCrosswordBoardLayout(43, 4, 31);
+        /** 按目标试玩约 1.25 倍放大横屏字格，并同步放大格内文字。 */
+        this.applyCrosswordBoardLayout(54, 5, 39);
         this.boardNode?.setPosition(-300, -5, 0);
         this.boardNode?.setScale(1, 1, 1);
         this.wheelNode?.setPosition(270, -35, 0);
@@ -982,13 +998,14 @@ export class PlayableGameView extends Component {
         const verticalEdgeOffset: number = (view.getVisibleSize().height - 1280) / 2;
         this.promptNode?.setPosition(0, -66, 0);
         this.promptNode?.setScale(1, 1, 1);
-        this.applyPromptImageSize(420, 62);
+        this.applyPromptImageSize(420, 42);
         this.downloadNode?.setPosition(270, -550 - verticalEdgeOffset, 0);
         this.downloadNode?.setScale(1, 1, 1);
         this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(false);
-        this.applyCrosswordBoardLayout(56, 4, 40);
-        this.boardNode?.setPosition(0, 318 + verticalEdgeOffset, 0);
+        /** 按截图目标将竖屏字格由约 38 像素放大到约 48 像素。 */
+        this.applyCrosswordBoardLayout(70, 5, 50);
+        this.boardNode?.setPosition(0, 168 + verticalEdgeOffset, 0);
         this.boardNode?.setScale(1, 1, 1);
         this.wheelNode?.setPosition(0, -358 - verticalEdgeOffset, 0);
         this.wheelNode?.setScale(0.96, 0.96, 1);
@@ -1030,9 +1047,9 @@ export class PlayableGameView extends Component {
         /** 相邻字谜单元格中心之间的距离。 */
         const cellStep: number = slotSize + slotGap;
         /** 当前字谜网格的水平中心列。 */
-        const centerColumn: number = 4;
+        const centerColumn: number = 3;
         /** 当前字谜网格的垂直中心行。 */
-        const centerRow: number = 2.5;
+        const centerRow: number = 3.5;
 
         this.crosswordCells.forEach((slotView: WordSlotView, cellKey: string): void => {
             /** 当前唯一字格的网格坐标。 */
@@ -1255,7 +1272,7 @@ export class PlayableGameView extends Component {
         this.brandNode?.setPosition(0, 155, 0);
         this.brandNode?.setScale(1, 1, 1);
         this.brandNode?.getComponent(UITransform)?.setContentSize(660, 110);
-        this.endCardLogoNode?.getComponent(UITransform)?.setContentSize(400, 110);
+        this.endCardLogoNode?.getComponent(UITransform)?.setContentSize(563, 155);
         /** 横屏结算页标题标签。 */
         const landscapeBrandLabel: Label | null = this.brandNode
             ?.getChildByName("BrandLabel")
@@ -1265,13 +1282,11 @@ export class PlayableGameView extends Component {
             landscapeBrandLabel.lineHeight = 68;
             landscapeBrandLabel.node.getComponent(UITransform)?.setContentSize(640, 100);
         }
-        /** 横屏结算页两行宣传语。 */
-        const landscapeTagline: Node | null = this.endCardNode?.getChildByName("EndCardTagline") ?? null;
-        landscapeTagline?.setPosition(0, -15, 0);
-        landscapeTagline?.getComponent(UITransform)?.setContentSize(620, 150);
-        this.playNowNode?.setPosition(0, -205, 0);
+        this.endCardTaglineNode?.setPosition(0, -30, 0);
+        this.endCardTaglineNode?.getComponent(UITransform)?.setContentSize(380, 97);
+        this.playNowNode?.setPosition(0, -225, 0);
         this.playNowNode?.setScale(1, 1, 1);
-        this.playNowNode?.getComponent(UITransform)?.setContentSize(430, 113);
+        this.playNowNode?.getComponent(UITransform)?.setContentSize(360, 95);
     }
 
     /** 应用竖屏结束页节点位置。 */
@@ -1280,7 +1295,7 @@ export class PlayableGameView extends Component {
         this.brandNode?.setPosition(0, 238, 0);
         this.brandNode?.setScale(1.15, 1.15, 1);
         this.brandNode?.getComponent(UITransform)?.setContentSize(650, 120);
-        this.endCardLogoNode?.getComponent(UITransform)?.setContentSize(436, 120);
+        this.endCardLogoNode?.getComponent(UITransform)?.setContentSize(563, 155);
         /** 竖屏结算页标题标签。 */
         const portraitBrandLabel: Label | null = this.brandNode
             ?.getChildByName("BrandLabel")
@@ -1290,19 +1305,11 @@ export class PlayableGameView extends Component {
             portraitBrandLabel.lineHeight = 74;
             portraitBrandLabel.node.getComponent(UITransform)?.setContentSize(630, 108);
         }
-        /** 竖屏结算页两行宣传语。 */
-        const portraitTagline: Node | null = this.endCardNode?.getChildByName("EndCardTagline") ?? null;
-        portraitTagline?.setPosition(0, -58, 0);
-        portraitTagline?.getComponent(UITransform)?.setContentSize(640, 180);
-        /** 竖屏宣传语标签。 */
-        const portraitTaglineLabel: Label | null = portraitTagline?.getComponent(Label) ?? null;
-        if (portraitTaglineLabel) {
-            portraitTaglineLabel.fontSize = 58;
-            portraitTaglineLabel.lineHeight = 68;
-        }
+        this.endCardTaglineNode?.setPosition(0, -58, 0);
+        this.endCardTaglineNode?.getComponent(UITransform)?.setContentSize(468, 120);
         this.playNowNode?.setPosition(0, -300, 0);
         this.playNowNode?.setScale(1.08, 1.08, 1);
-        this.playNowNode?.getComponent(UITransform)?.setContentSize(500, 132);
+        this.playNowNode?.getComponent(UITransform)?.setContentSize(431, 114);
     }
 
     /** 重绘森林图片加载前使用的自适应后备背景。 */
@@ -1617,9 +1624,11 @@ export class PlayableGameView extends Component {
         this.node.emit("playable-word-repeat", repeatedWord);
     }
 
-    /** 处理正确单词并立即推进至下一步骤，反馈动画继续独立播放。 */
+    /** 处理正确单词，等待逐字落位完成后再推进下一步骤。 */
     private handleCorrectWord(step: WordStepConfig): void {
         this.isInputLocked = true;
+        /** 本轮正确反馈的动画代次。 */
+        const settlementGeneration: number = ++this.correctSettlementGeneration;
         /** 本次正确填写对应的步骤索引。 */
         const completedStepIndex: number = this.currentStepIndex;
         /** 当前是否完成了最后一个目标单词。 */
@@ -1628,67 +1637,126 @@ export class PlayableGameView extends Component {
         this.hideGuideHand();
         this.hideSelectionVisuals();
         this.playEffect(this.correctAudioClip);
-        this.animateWordLanding(step.word);
-        this.showPraiseAnimation(step.praise);
-        this.completeCurrentBoardRow(step.word);
-        this.showGoldParticleBurst(step.word);
-        this.completedWords.add(step.word);
         this.isTracing = false;
         this.selectedLetterIndices.length = 0;
-        this.currentStepIndex += 1;
-        if (completedStepIndex === PLAYABLE_CONFIG.storeRedirectStepIndex) {
-            this.handleDownloadRequest();
-        }
-        if (isFinalWord) {
-            /** 等鼓励横幅完整播放并清理后再进入结束页，避免两层内容重叠。 */
-            this.scheduleOnce((): void => {
-                this.advanceToNextStep();
-            }, 1.25);
-            return;
-        }
-        this.advanceToNextStep();
+        /** 防止落位回调与保底回调重复推进。 */
+        let hasFinishedSettlement: boolean = false;
+        /** 完成正确反馈并恢复后续流程。 */
+        const finishSettlement = (): void => {
+            if (
+                hasFinishedSettlement
+                || settlementGeneration !== this.correctSettlementGeneration
+                || this.isEndCardVisible
+            ) {
+                return;
+            }
+            hasFinishedSettlement = true;
+            this.completeCurrentBoardRow(step.word);
+            this.showPraiseAnimation(step.praise);
+            this.showGoldParticleBurst(step.word);
+            this.completedWords.add(step.word);
+            this.currentStepIndex += 1;
+            if (
+                PLAYABLE_CONFIG.storeRedirectStepIndex >= 0
+                && completedStepIndex === PLAYABLE_CONFIG.storeRedirectStepIndex
+            ) {
+                this.handleDownloadRequest();
+            }
+            if (isFinalWord) {
+                /** 等鼓励横幅完整播放并清理后再进入结束页，避免两层内容重叠。 */
+                this.scheduleOnce((): void => {
+                    if (settlementGeneration === this.correctSettlementGeneration) {
+                        this.advanceToNextStep();
+                    }
+                }, 1.25);
+                return;
+            }
+            this.advanceToNextStep();
+        };
+        this.animateWordLanding(step.word, finishSettlement);
+        /** 保底恢复，避免异常素材或补间回调导致交互永久锁定。 */
+        this.scheduleOnce(finishSettlement, 1.2);
     }
 
-    /** 将正确单词从字盘位置飞入对应的左侧字格。 */
-    private animateWordLanding(word: string): void {
+    /** 将正确单词逐字从字盘飞入对应字格，并在全部落位后回调。 */
+    private animateWordLanding(word: string, onComplete: () => void): void {
         if (!this.layoutRoot || !this.wheelNode || !this.boardNode) {
+            onComplete();
             return;
         }
-
-        /** 飞行动画文字标签。 */
-        const flyingLabel: Label = this.createLabel(
-            "FlyingWord",
-            this.layoutRoot,
-            word,
-            48,
-            new Color(255, 255, 255, 255),
-            360,
-            72,
-        );
-        flyingLabel.isBold = true;
-        flyingLabel.node.setPosition(this.wheelNode.position);
-
         /** 当前目标单词在完整棋盘单词列表中的索引。 */
         const targetWordIndex: number = PLAYABLE_CONFIG.completedWords.length + this.currentStepIndex;
-        /** 目标单词在棋盘局部坐标中的中心。 */
-        const targetWordPosition: Vec3 = this.wordTargetPositions[targetWordIndex] ?? Vec3.ZERO;
-        /** 单词面板当前缩放。 */
-        const boardScale: Vec3 = this.boardNode.scale;
-        /** 飞行动画终点。 */
-        const targetPosition: Vec3 = new Vec3(
-            this.boardNode.position.x + targetWordPosition.x * boardScale.x,
-            this.boardNode.position.y + targetWordPosition.y * boardScale.y,
-            0,
-        );
-        tween(flyingLabel.node)
-            .parallel(
-                tween().to(0.5, { position: targetPosition }, { easing: "quadIn" }),
-                tween().to(0.5, { scale: new Vec3(0.7, 0.7, 1) }),
-            )
-            .call((): void => {
-                flyingLabel.node.destroy();
-            })
-            .start();
+        /** 当前目标行全部字母标签。 */
+        const targetLabels: Label[] = this.wordSlotLabels[targetWordIndex] ?? [];
+        /** 当前目标行全部字格背景。 */
+        const targetBackgrounds: Sprite[] = this.wordSlotBackgrounds[targetWordIndex] ?? [];
+        if (targetLabels.length < word.length || targetBackgrounds.length < word.length) {
+            onComplete();
+            return;
+        }
+        /** 布局根节点坐标转换组件。 */
+        const layoutTransform: UITransform = this.layoutRoot.getComponent(UITransform)!;
+        /** 已用于本次落位的字盘字母索引。 */
+        const usedLetterIndices: number[] = [];
+        /** 已经抵达目标字格的字符数量。 */
+        let landedLetterCount: number = 0;
+
+        Array.from(word).forEach((letter: string, letterIndex: number): void => {
+            /** 当前字符对应的未使用字盘索引。 */
+            const sourceLetterIndex: number = this.wheelLetterLabels.findIndex(
+                (sourceLabel: Label, sourceIndex: number): boolean =>
+                    sourceLabel.string === letter && !usedLetterIndices.includes(sourceIndex),
+            );
+            if (sourceLetterIndex >= 0) {
+                usedLetterIndices.push(sourceLetterIndex);
+            }
+            /** 当前字符的字盘源节点。 */
+            const sourceLetterNode: Node = this.wheelLetterNodes[sourceLetterIndex]
+                ?? this.wheelNode!;
+            /** 当前字符的目标字格标签。 */
+            const targetLabel: Label = targetLabels[letterIndex];
+            /** 当前字符的目标字格背景。 */
+            const targetBackground: Sprite = targetBackgrounds[letterIndex];
+            /** 字盘字母中心在布局根节点中的坐标。 */
+            const sourcePosition: Vec3 = layoutTransform.convertToNodeSpaceAR(
+                sourceLetterNode.getComponent(UITransform)!.convertToWorldSpaceAR(Vec3.ZERO),
+            );
+            /** 目标字格中心在布局根节点中的坐标。 */
+            const targetPosition: Vec3 = layoutTransform.convertToNodeSpaceAR(
+                targetLabel.node.getComponent(UITransform)!.convertToWorldSpaceAR(Vec3.ZERO),
+            );
+            /** 当前飞行字符标签。 */
+            const flyingLabel: Label = this.createLabel(
+                `FlyingLetter_${letterIndex}`,
+                this.layoutRoot!,
+                letter,
+                48,
+                new Color(255, 255, 255, 255),
+                72,
+                72,
+            );
+            flyingLabel.isBold = true;
+            flyingLabel.font = this.wheelLetterLabels[sourceLetterIndex]?.font ?? null;
+            flyingLabel.node.setPosition(sourcePosition);
+            flyingLabel.node.setSiblingIndex(this.layoutRoot!.children.length - 1);
+            tween(flyingLabel.node)
+                .delay(letterIndex * 0.07)
+                .parallel(
+                    tween().to(0.34, { position: targetPosition }, { easing: "quadIn" }),
+                    tween().to(0.34, { scale: new Vec3(0.72, 0.72, 1) }),
+                )
+                .call((): void => {
+                    targetLabel.string = letter;
+                    targetLabel.color = new Color(255, 255, 255, 255);
+                    this.setSlotColor(targetBackground, FILLED_SLOT_COLOR);
+                    flyingLabel.node.destroy();
+                    landedLetterCount += 1;
+                    if (landedLetterCount >= word.length) {
+                        onComplete();
+                    }
+                })
+                .start();
+        });
     }
 
     /** 显示与正确单词一一对应的 PSD 鼓励词。 */
@@ -1697,13 +1765,16 @@ export class PlayableGameView extends Component {
             return;
         }
 
+        /** 当前进度对应的 PSD 横幅配置。 */
+        const praiseVisual: PraiseVisualConfig = PRAISE_VISUALS[praise]
+            ?? PRAISE_VISUALS.Spectacular;
         /** 鼓励词精灵节点。 */
         const praiseNode: Node = this.createSpriteNode(
             `Praise_${praise}`,
             this.layoutRoot,
-            "playable/psd/praise-spectacular/spriteFrame",
-            584,
-            90,
+            praiseVisual.resourcePath,
+            praiseVisual.width,
+            praiseVisual.height,
         );
         /** 鼓励词透明度组件。 */
         const praiseOpacity: UIOpacity = praiseNode.addComponent(UIOpacity);
@@ -1765,6 +1836,10 @@ export class PlayableGameView extends Component {
             /** 当前字格背景。 */
             const slotBackground: Sprite | undefined = backgroundList[letterIndex];
             if (!letterLabel || !slotBackground) {
+                return;
+            }
+
+            if (letterLabel.string === letter) {
                 return;
             }
 
@@ -1865,6 +1940,7 @@ export class PlayableGameView extends Component {
 
         this.unschedule(this.handleGuideIdleTimeout);
         this.unschedule(this.handleCountdownTick);
+        this.correctSettlementGeneration += 1;
         this.hideGuideHand();
         this.clearPraiseAnimations();
         this.isEndCardVisible = true;
@@ -2130,7 +2206,7 @@ export class PlayableGameView extends Component {
         this.scheduleOnce(this.handleGuideIdleTimeout, delaySeconds);
     }
 
-    /** 处理五秒无操作计时结束。 */
+    /** 处理当前配置的无操作引导计时结束。 */
     private handleGuideIdleTimeout(): void {
         if (this.isEndCardVisible || this.isTracing || this.isInputLocked) {
             this.scheduleGuideAfterIdle(PLAYABLE_CONFIG.idleGuideDelaySeconds);
@@ -2146,19 +2222,19 @@ export class PlayableGameView extends Component {
         this.startGuideHandAnimation(this.currentGuideTargetWord);
     }
 
-    /** 启动下载按钮，并在进入页面时立即显示文案和手势引导。 */
+    /** 启动下载按钮，并在开局一秒无操作后显示文案和手势引导。 */
     private startInitialAnimations(): void {
         this.startDownloadIconAnimation();
         if (this.promptNode) {
-            this.promptNode.active = true;
+            this.promptNode.active = false;
             /** 首屏引导文案透明度组件。 */
             const promptOpacity: UIOpacity = this.promptNode.getComponent(UIOpacity)
                 ?? this.promptNode.addComponent(UIOpacity);
             Tween.stopAllByTarget(promptOpacity);
-            promptOpacity.opacity = 255;
+            promptOpacity.opacity = 0;
         }
         this.traceGraphics?.clear();
-        this.startGuideHandAnimation(this.currentGuideTargetWord);
+        this.scheduleGuideAfterIdle(PLAYABLE_CONFIG.initialGuideDelaySeconds);
     }
 
     /** 按十二点起始逆时针顺序循环放大缩小字盘字母。 */

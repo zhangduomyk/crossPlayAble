@@ -42,7 +42,7 @@ export interface PlayableConfig {
     readonly initialGuideDelaySeconds: number;
     /** 游戏中停顿后再次显示引导的延迟秒数。 */
     readonly idleGuideDelaySeconds: number;
-    /** 完成该步骤后立即触发商店跳转，使用从零开始的索引。 */
+    /** 完成该步骤后立即触发商店跳转；负数表示仅由下载入口触发。 */
     readonly storeRedirectStepIndex: number;
     /** 开局已经填入棋盘的单词。 */
     readonly completedWords: readonly string[];
@@ -66,25 +66,21 @@ export const PLAYABLE_CONFIG: PlayableConfig = {
     endCardButtonText: "Play Now",
     downloadButtonText: "Install",
     countdownSeconds: 30,
-    initialGuideDelaySeconds: 6.5,
+    initialGuideDelaySeconds: 1,
     idleGuideDelaySeconds: 2,
-    storeRedirectStepIndex: 2,
-    completedWords: ["FEST", "SOFT"],
+    storeRedirectStepIndex: -1,
+    completedWords: [],
     bonusWords: [
-        "FOSTER", "SOFTER", "FORTES",
-        "STORE", "FROST", "FORTS", "FRETS", "ROTES", "NOTES",
-        "FORE", "FRET", "FOES", "REST", "ROSE", "ROTE", "ROTS", "ROES",
-        "SORT", "SORE", "TORE", "TORS", "TOES", "ORES", "EROS", "NEST",
-        "NETS", "SENT", "SETS", "TENS", "NOSE", "NOES", "NOTE", "TONE", "SNOT",
-        "FOR", "FRO", "FOE", "ORE", "TOE", "TOR", "ROT", "REF", "OFT",
-        "SET", "SOT", "SON", "NET", "TEN", "NOT", "NOR", "TON",
+        "RATES", "ASTER", "TASER", "SATYR", "RESAT", "TARES", "RESTS",
+        "TEAR", "STAR", "REST", "EARS", "ARTS", "RATS", "TARS", "ERAS", "TARE", "TSAR", "ARSE",
+        "ARE", "ERA", "EAT", "TEA", "SEA", "ART", "RAT", "TAR", "SAT", "SAE", "ETA",
     ],
     wordSteps: [
-        { word: "FOREST", wheelLetters: "FTSERO", praise: "Spectacular" },
-        { word: "FORTE", wheelLetters: "FTSERO", praise: "Spectacular" },
-        { word: "FORES", wheelLetters: "FTSERO", praise: "Spectacular" },
-        { word: "FETOR", wheelLetters: "FTSERO", praise: "Spectacular" },
-        { word: "FORT", wheelLetters: "FTSERO", praise: "Spectacular" },
-        { word: "REFS", wheelLetters: "FTSERO", praise: "Spectacular" },
+        { word: "EAR", wheelLetters: "ESTRA", praise: "Nice" },
+        { word: "EAST", wheelLetters: "ESTRA", praise: "Brilliant" },
+        { word: "SEAT", wheelLetters: "ESTRA", praise: "Brilliant" },
+        { word: "RATE", wheelLetters: "ESTRA", praise: "Brilliant" },
+        { word: "TEARS", wheelLetters: "ESTRA", praise: "Brilliant" },
+        { word: "STARE", wheelLetters: "ESTRA", praise: "Spectacular" },
     ],
 };
