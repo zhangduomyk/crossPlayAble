@@ -1005,7 +1005,7 @@ export class PlayableGameView extends Component {
         this.applyInstallPanelLayout(false);
         /** 按截图目标将竖屏字格由约 38 像素放大到约 48 像素。 */
         this.applyCrosswordBoardLayout(70, 5, 50);
-        this.boardNode?.setPosition(0, 168 + verticalEdgeOffset, 0);
+        this.boardNode?.setPosition(0, 203 + verticalEdgeOffset, 0);
         this.boardNode?.setScale(1, 1, 1);
         this.wheelNode?.setPosition(0, -358 - verticalEdgeOffset, 0);
         this.wheelNode?.setScale(0.96, 0.96, 1);
