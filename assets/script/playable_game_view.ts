@@ -2,7 +2,6 @@ import {
     _decorator,
     AudioClip,
     AudioSource,
-    BitmapFont,
     Color,
     Component,
     EventTouch,
@@ -44,8 +43,8 @@ const { ccclass, property } = _decorator;
 /** UI 默认使用的二维渲染层。 */
 const UI_LAYER: number = Layers.Enum.UI_2D;
 
-/** 森林背景资源尚未加载时使用的后备颜色。 */
-const BACKGROUND_COLOR: Color = new Color(88, 105, 87, 255);
+/** 飞机天空背景资源尚未加载时使用的后备颜色。 */
+const BACKGROUND_COLOR: Color = new Color(103, 167, 205, 255);
 
 /** 普通未填写字格颜色，PSD 图片加载前用于临时显示。 */
 const SLOT_COLOR: Color = new Color(255, 255, 255, 255);
@@ -68,11 +67,28 @@ const REPEAT_FLASH_COLOR: Color = new Color(255, 215, 55, 230);
 /** 玩家连线和引导演示统一使用的加粗线宽。 */
 const TRACE_LINE_WIDTH: number = 20;
 
-/** 新 PSD 横向烟雾的优化后纹理宽度。 */
-const FOG_TEXTURE_WIDTH: number = 2820;
+/** 飞机背景图片的原始宽度。 */
+const AIRPLANE_BACKGROUND_WIDTH: number = 1610;
 
-/** 新 PSD 横向烟雾按原比例缩放后的纹理高度。 */
-const FOG_TEXTURE_HEIGHT: number = 735;
+/** 飞机背景图片的原始高度。 */
+const AIRPLANE_BACKGROUND_HEIGHT: number = 892;
+
+/** 四层飞机航迹在背景局部坐标中的位置和尺寸。 */
+const AIRPLANE_TRAIL_LAYOUTS: readonly {
+    /** 航迹相对背景中心的横坐标。 */
+    readonly x: number;
+    /** 航迹相对背景中心的纵坐标。 */
+    readonly y: number;
+    /** 航迹原始宽度。 */
+    readonly width: number;
+    /** 航迹原始高度。 */
+    readonly height: number;
+}[] = [
+    { x: -150.5, y: -201.5, width: 949, height: 345 },
+    { x: -401.5, y: -141, width: 785, height: 466 },
+    { x: -691.5, y: -40.5, width: 267, height: 405 },
+    { x: 234.5, y: -151.5, width: 451, height: 171 },
+];
 
 /** 单个字谜单元格的二维网格坐标。 */
 interface CrosswordCellCoordinate {
@@ -107,14 +123,14 @@ const PRAISE_VISUALS: Readonly<Record<string, PraiseVisualConfig>> = {
     Spectacular: { resourcePath: "playable/psd/praise-spectacular/spriteFrame", width: 330, height: 51 },
 };
 
-/** 与 2026-08-13 需求稿一致的六个单词字谜布局。 */
+/** 按用户截图重新排列的五列八行连通字谜布局。 */
 const CROSSWORD_LAYOUT: readonly CrosswordWordLayout[] = [
-    { word: "EAR", cells: [{ column: 4, row: 7 }, { column: 5, row: 7 }, { column: 6, row: 7 }] },
-    { word: "EAST", cells: [{ column: 0, row: 2 }, { column: 1, row: 2 }, { column: 2, row: 2 }, { column: 3, row: 2 }] },
-    { word: "SEAT", cells: [{ column: 1, row: 6 }, { column: 2, row: 6 }, { column: 3, row: 6 }, { column: 4, row: 6 }] },
-    { word: "RATE", cells: [{ column: 4, row: 4 }, { column: 4, row: 5 }, { column: 4, row: 6 }, { column: 4, row: 7 }] },
-    { word: "TEARS", cells: [{ column: 1, row: 0 }, { column: 1, row: 1 }, { column: 1, row: 2 }, { column: 1, row: 3 }, { column: 1, row: 4 }] },
-    { word: "STARE", cells: [{ column: 1, row: 4 }, { column: 2, row: 4 }, { column: 3, row: 4 }, { column: 4, row: 4 }, { column: 5, row: 4 }] },
+    { word: "LAP", cells: [{ column: 2, row: 0 }, { column: 3, row: 0 }, { column: 4, row: 0 }] },
+    { word: "ALE", cells: [{ column: 2, row: 5 }, { column: 2, row: 6 }, { column: 2, row: 7 }] },
+    { word: "LEA", cells: [{ column: 2, row: 0 }, { column: 2, row: 1 }, { column: 2, row: 2 }] },
+    { word: "LANE", cells: [{ column: 1, row: 2 }, { column: 1, row: 3 }, { column: 1, row: 4 }, { column: 1, row: 5 }] },
+    { word: "LEAN", cells: [{ column: 0, row: 5 }, { column: 1, row: 5 }, { column: 2, row: 5 }, { column: 3, row: 5 }] },
+    { word: "PLANE", cells: [{ column: 0, row: 2 }, { column: 1, row: 2 }, { column: 2, row: 2 }, { column: 3, row: 2 }, { column: 4, row: 2 }] },
 ];
 
 /** 游戏初始界面组件，负责创建素材节点并处理横竖屏布局。 */
@@ -160,6 +176,9 @@ export class PlayableGameView extends Component {
     @property(Node)
     private playNowNode: Node | null = null;
 
+    /** 游戏过程中常驻底部的 Play Now 按钮节点。 */
+    private gameplayPlayNowNode: Node | null = null;
+
     /** 当前创建的字盘字母标签。 */
     private readonly wheelLetterLabels: Label[] = [];
 
@@ -190,26 +209,14 @@ export class PlayableGameView extends Component {
     /** 每个棋盘单词的落点中心。 */
     private readonly wordTargetPositions: Vec3[] = [];
 
-    /** 森林背景精灵节点。 */
+    /** 飞机天空背景精灵节点。 */
     private backgroundSpriteNode: Node | null = null;
 
-    /** 两张循环平移的雾层节点。 */
-    private readonly fogNodes: Node[] = [];
+    /** 游戏页顶部使用供应素材的 CROSSWORD QUEST Logo。 */
+    private gameplayLogoNode: Node | null = null;
 
-    /** 当前雾层横向循环偏移。 */
-    private fogOffset: number = 0;
-
-    /** 当前雾层单张循环跨度。 */
-    private fogSpan: number = 1200;
-
-    /** 当前雾层按屏幕底边对齐后的纵坐标。 */
-    private fogBottomY: number = 0;
-
-    /** 左上角倒计时根节点。 */
-    private clockNode: Node | null = null;
-
-    /** 左上角倒计时数字标签。 */
-    private clockLabel: Label | null = null;
+    /** PSD 中依次循环显隐的四层飞机航迹节点。 */
+    private readonly airplaneTrailNodes: Node[] = [];
 
     /** 红黄边缘闪光节点。 */
     private feedbackFlashNode: Node | null = null;
@@ -253,9 +260,6 @@ export class PlayableGameView extends Component {
     /** 玩家是否已经触发首次有效交互。 */
     private hasStartedByInteraction: boolean = false;
 
-    /** 当前倒计时剩余秒数。 */
-    private remainingSeconds: number = PLAYABLE_CONFIG.countdownSeconds;
-
     /** 右下角由 PSD 原图组成的完整安装按钮节点。 */
     private installPanelImageNode: Node | null = null;
 
@@ -264,9 +268,6 @@ export class PlayableGameView extends Component {
 
     /** 结算页中由新 PSD 导出的宣传语节点。 */
     private endCardTaglineNode: Node | null = null;
-
-    /** 倒计时最后五秒的抖动动画是否已经启动。 */
-    private hasStartedClockWarning: boolean = false;
 
     /** 已经正确填入或初始填入的单词集合。 */
     private readonly completedWords: Set<string> = new Set(PLAYABLE_CONFIG.completedWords);
@@ -367,26 +368,24 @@ export class PlayableGameView extends Component {
         this.correctSettlementGeneration += 1;
         view.off("canvas-resize", this.applyResponsiveLayout, this);
         this.unschedule(this.handleGuideIdleTimeout);
-        this.unschedule(this.handleCountdownTick);
         this.backgroundAudioSource?.stop();
+        this.airplaneTrailNodes.forEach((trailNode: Node): void => {
+            /** 销毁前需要停止的航迹透明度组件。 */
+            const trailOpacity: UIOpacity | null = trailNode.getComponent(UIOpacity);
+            if (trailOpacity) {
+                Tween.stopAllByTarget(trailOpacity);
+            }
+        });
+        if (this.gameplayPlayNowNode) {
+            Tween.stopAllByTarget(this.gameplayPlayNowNode);
+        }
         this.unbindGameplayInput();
     }
 
-    /** 每帧推动双雾层平移，保持横竖屏都能无缝循环。 */
-    protected update(deltaTime: number): void {
+    /** 每帧重绘引导手已经经过的连线路径。 */
+    protected update(): void {
         if (this.isEndCardVisible) {
             return;
-        }
-
-        if (this.fogNodes.length >= 2) {
-            /** 当前帧按每秒十八逻辑像素计算的雾层位移。 */
-            const fogMovement: number = 18 * deltaTime;
-            this.fogOffset -= fogMovement;
-            if (this.fogOffset <= -this.fogSpan) {
-                this.fogOffset += this.fogSpan;
-            }
-            this.fogNodes[0].setPosition(this.fogOffset, this.fogBottomY, 0);
-            this.fogNodes[1].setPosition(this.fogOffset + this.fogSpan, this.fogBottomY, 0);
         }
         if (this.isGuidePreviewAnimating) {
             this.redrawGuideTraceProgress();
@@ -444,7 +443,8 @@ export class PlayableGameView extends Component {
         }
         this.promptNode && (this.promptNode.active = false);
         /** 独立下载图标继续显示并保留原有呼吸动画。 */
-        this.downloadNode && (this.downloadNode.active = !shouldHidePlayableDownload());
+        this.downloadNode && (this.downloadNode.active = false);
+        this.gameplayPlayNowNode && (this.gameplayPlayNowNode.active = !shouldHidePlayableDownload());
         this.installPanelNode && (this.installPanelNode.active = !shouldHidePlayableDownload());
     }
 
@@ -548,7 +548,7 @@ export class PlayableGameView extends Component {
         return `${coordinate.column},${coordinate.row}`;
     }
 
-    /** 创建森林背景、循环雾、倒计时和边缘反馈等运行时视觉节点。 */
+    /** 创建飞机背景、循环航迹、常驻按钮、倒计时和边缘反馈等运行时视觉节点。 */
     private createRuntimeVisuals(): void {
         if (!this.layoutRoot) {
             return;
@@ -556,33 +556,47 @@ export class PlayableGameView extends Component {
 
         this.backgroundGraphics && (this.backgroundGraphics.node.active = false);
         this.backgroundSpriteNode = this.createSpriteNode(
-            "ForestBackground",
+            "AirplaneBackground",
             this.layoutRoot,
-            "playable/psd/forest-background/spriteFrame",
-            1200,
-            1200,
+            "playable/psd/airplane-background/spriteFrame",
+            AIRPLANE_BACKGROUND_WIDTH,
+            AIRPLANE_BACKGROUND_HEIGHT,
         );
         this.backgroundSpriteNode.setSiblingIndex(0);
 
-        this.fogNodes.length = 0;
-        for (let fogIndex: number = 0; fogIndex < 2; fogIndex += 1) {
-            /** 单张循环雾层节点。 */
-            const fogNode: Node = this.createSpriteNode(
-                `MovingFog_${fogIndex + 1}`,
-                this.layoutRoot,
-                "playable/psd/moving-fog/spriteFrame",
-                FOG_TEXTURE_WIDTH,
-                FOG_TEXTURE_HEIGHT,
+        this.airplaneTrailNodes.length = 0;
+        AIRPLANE_TRAIL_LAYOUTS.forEach((trailLayout, trailIndex: number): void => {
+            /** 当前 PSD 航迹图层节点。 */
+            const trailNode: Node = this.createSpriteNode(
+                `AirplaneTrail_${trailIndex + 1}`,
+                this.backgroundSpriteNode!,
+                `playable/psd/airplane-trail-${trailIndex + 1}/spriteFrame`,
+                trailLayout.width,
+                trailLayout.height,
             );
-            /** 雾层透明度组件。 */
-            const fogOpacity: UIOpacity = fogNode.addComponent(UIOpacity);
-            /** 新素材自身带透明度，按原始透明度完整显示。 */
-            fogOpacity.opacity = 255;
-            fogNode.setSiblingIndex(fogIndex + 1);
-            this.fogNodes.push(fogNode);
-        }
+            trailNode.setPosition(trailLayout.x, trailLayout.y, 0);
+            /** 航迹静态显示使用的透明度组件。 */
+            const trailOpacity: UIOpacity = trailNode.addComponent(UIOpacity);
+            /** 本版本静态展示完整喷气航迹，不再循环渐显。 */
+            trailOpacity.opacity = 255;
+            this.airplaneTrailNodes.push(trailNode);
+        });
 
-        this.createClockVisual();
+        this.gameplayPlayNowNode = this.createSpriteNode(
+            "GameplayPlayNow",
+            this.layoutRoot,
+            "playable/psd/play-now/spriteFrame",
+            302,
+            80,
+        );
+        this.gameplayLogoNode = this.createSpriteNode(
+            "GameplayLogo",
+            this.layoutRoot,
+            "playable/psd/endcard-logo/spriteFrame",
+            500,
+            138,
+        );
+
         this.createFeedbackFlashVisual();
         this.loadCrosswordSlotSprites();
         this.applyLatestPsdSprites();
@@ -627,49 +641,6 @@ export class PlayableGameView extends Component {
                 84,
             );
         }
-    }
-
-    /** 使用 PSD 原稿创建左上角闹钟，并叠加动态倒计时数字。 */
-    private createClockVisual(): void {
-        if (!this.layoutRoot) {
-            return;
-        }
-
-        this.clockNode = this.createUiNode("CountdownClock", this.layoutRoot, 92, 92);
-        this.createSpriteNode(
-            "CountdownClockImage",
-            this.clockNode,
-            "playable/psd/countdown-clock/spriteFrame",
-            84,
-            83,
-        );
-
-        this.clockLabel = this.createLabel(
-            "CountdownLabel",
-            this.clockNode,
-            String(this.remainingSeconds),
-            36,
-            new Color(255, 255, 255, 255),
-            76,
-            58,
-        );
-        this.clockLabel.isBold = true;
-        this.clockLabel.outlineWidth = 0;
-        /** 闹钟原图的表盘圆心比整张图片中心低约七像素。 */
-        this.clockLabel.node.setPosition(3, 4, 0);
-        resources.load(
-            "playable/fonts/countdown-number",
-            BitmapFont,
-            (fontError: Error | null, bitmapFont: BitmapFont): void => {
-                if (fontError || !this.clockLabel?.node.isValid) {
-                    console.warn("[Playable] 倒计时描边数字字体加载失败。", fontError);
-                    return;
-                }
-                this.clockLabel.font = bitmapFont;
-                this.clockLabel.fontSize = 42;
-                this.clockLabel.lineHeight = 51;
-            },
-        );
     }
 
     /** 加载 PSD 提供的空白和已填字格图片，并刷新当前棋盘。 */
@@ -889,9 +860,6 @@ export class PlayableGameView extends Component {
                     return;
                 }
                 this.layoutRoot.getComponentsInChildren(Label).forEach((label: Label): void => {
-                    if (label === this.clockLabel) {
-                        return;
-                    }
                     label.font = font;
                 });
             },
@@ -971,14 +939,16 @@ export class PlayableGameView extends Component {
 
     /** 应用横屏节点位置。 */
     private applyLandscapePositions(): void {
-        this.promptNode?.setPosition(270, 245, 0);
+        this.gameplayLogoNode?.setPosition(0, 285, 0);
+        this.gameplayLogoNode?.setScale(1, 1, 1);
+        this.gameplayLogoNode?.getComponent(UITransform)?.setContentSize(400, 110);
+        /** 横屏提示下移，为顶部 Logo 保留清晰间距。 */
+        this.promptNode?.setPosition(270, 195, 0);
         this.promptNode?.setScale(1, 1, 1);
         this.applyPromptImageSize(420, 42);
-        this.downloadNode?.setPosition(450, -230, 0);
-        this.downloadNode?.setScale(1, 1, 1);
-        this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(true);
-        /** 按目标试玩约 1.25 倍放大横屏字格，并同步放大格内文字。 */
+        this.applyGameplayPlayNowLayout(200, 53, -15, 25);
+        /** 横屏字格和格内文字沿用目标试玩的视觉比例。 */
         this.applyCrosswordBoardLayout(54, 5, 39);
         this.boardNode?.setPosition(-300, -5, 0);
         this.boardNode?.setScale(1, 1, 1);
@@ -986,9 +956,8 @@ export class PlayableGameView extends Component {
         this.wheelNode?.setScale(1, 1, 1);
         this.applyWheelLetterFontSize(72);
         this.guideHandNode?.setScale(0.47, 0.47, 1);
-        this.selectionBannerNode?.setPosition(270, 242, 0);
+        this.selectionBannerNode?.setPosition(270, 195, 0);
         this.selectionBannerNode?.setScale(1, 1, 1);
-        this.clockNode?.setPosition(-530, 290, 0);
         this.applyLandscapeEndCardPositions();
     }
 
@@ -996,27 +965,59 @@ export class PlayableGameView extends Component {
     private applyPortraitPositions(): void {
         /** 当前竖屏相对 720×1280 基准在上下两端增加或减少的空间。 */
         const verticalEdgeOffset: number = (view.getVisibleSize().height - 1280) / 2;
+        this.gameplayLogoNode?.setPosition(0, 555 + verticalEdgeOffset, 0);
+        this.gameplayLogoNode?.setScale(1, 1, 1);
+        this.gameplayLogoNode?.getComponent(UITransform)?.setContentSize(500, 138);
         this.promptNode?.setPosition(0, -66, 0);
         this.promptNode?.setScale(1, 1, 1);
         this.applyPromptImageSize(420, 42);
-        this.downloadNode?.setPosition(270, -550 - verticalEdgeOffset, 0);
-        this.downloadNode?.setScale(1, 1, 1);
-        this.applyDownloadButtonSize(90, 82);
         this.applyInstallPanelLayout(false);
-        /** 按截图目标将竖屏字格由约 38 像素放大到约 48 像素。 */
-        this.applyCrosswordBoardLayout(70, 5, 50);
+        this.applyGameplayPlayNowLayout(230, 61, -10, 30);
+        /** 竖屏使用更大的字格，保证紧凑新棋盘仍清晰可读。 */
+        this.applyCrosswordBoardLayout(68, 5, 50);
         this.boardNode?.setPosition(0, 203 + verticalEdgeOffset, 0);
         this.boardNode?.setScale(1, 1, 1);
-        this.wheelNode?.setPosition(0, -358 - verticalEdgeOffset, 0);
-        this.wheelNode?.setScale(0.96, 0.96, 1);
+        this.wheelNode?.setPosition(0, -315 - verticalEdgeOffset, 0);
+        this.wheelNode?.setScale(0.9, 0.9, 1);
         this.applyWheelLetterFontSize(86);
         /** 抵消竖屏轮盘缩放，保持 PSD 手势图片的目标显示尺寸。 */
-        const guideHandScale: number = 0.47 / 0.96;
+        const guideHandScale: number = 0.47 / 0.9;
         this.guideHandNode?.setScale(guideHandScale, guideHandScale, 1);
         this.selectionBannerNode?.setPosition(0, -66, 0);
         this.selectionBannerNode?.setScale(1, 1, 1);
-        this.clockNode?.setPosition(-271, 568 + verticalEdgeOffset, 0);
         this.applyPortraitEndCardPositions();
+    }
+
+    /** 按截图将 Play Now 放在安装面板后方，并保留顶部和右侧的橙色按钮区域。 */
+    private applyGameplayPlayNowLayout(
+        width: number,
+        height: number,
+        offsetX: number,
+        offsetY: number,
+    ): void {
+        if (!this.gameplayPlayNowNode || !this.installPanelNode) {
+            return;
+        }
+
+        /** 当前方向下安装面板的右下角基准位置。 */
+        const installPosition: Vec3 = this.installPanelNode.position;
+        this.gameplayPlayNowNode.setPosition(
+            installPosition.x + offsetX,
+            installPosition.y + offsetY,
+            0,
+        );
+        this.gameplayPlayNowNode.setScale(1, 1, 1);
+        this.gameplayPlayNowNode.getComponent(UITransform)?.setContentSize(width, height);
+
+        /** 安装面板当前在布局根节点中的层级索引。 */
+        const installSiblingIndex: number = this.installPanelNode.getSiblingIndex();
+        /** Play Now 当前层级，用于兼容屏幕旋转后的重复布局。 */
+        const playNowSiblingIndex: number = this.gameplayPlayNowNode.getSiblingIndex();
+        /** 将节点插入安装面板正下方时使用的稳定目标索引。 */
+        const targetSiblingIndex: number = playNowSiblingIndex < installSiblingIndex
+            ? installSiblingIndex - 1
+            : installSiblingIndex;
+        this.gameplayPlayNowNode.setSiblingIndex(targetSiblingIndex);
     }
 
     /** 按布局方向更新 PSD 引导文案图片尺寸。 */
@@ -1046,9 +1047,9 @@ export class PlayableGameView extends Component {
     ): void {
         /** 相邻字谜单元格中心之间的距离。 */
         const cellStep: number = slotSize + slotGap;
-        /** 当前字谜网格的水平中心列。 */
-        const centerColumn: number = 3;
-        /** 当前字谜网格的垂直中心行。 */
+        /** 当前五列字谜网格的水平中心列。 */
+        const centerColumn: number = 2;
+        /** 当前八行字谜网格的垂直中心行。 */
         const centerRow: number = 3.5;
 
         this.crosswordCells.forEach((slotView: WordSlotView, cellKey: string): void => {
@@ -1114,26 +1115,14 @@ export class PlayableGameView extends Component {
         });
     }
 
-    /** 森林背景铺满画布，烟雾保持原比例贴合屏幕宽度并与底边对齐。 */
+    /** 飞机背景和其四层航迹按统一比例覆盖当前画布。 */
     private applyBackdropLayout(width: number, height: number): void {
-        /** 1200 方形素材覆盖当前画布所需的统一缩放。 */
-        const backgroundCoverScale: number = Math.max(width / 1200, height / 1200);
+        /** 飞机背景覆盖当前画布所需的统一缩放。 */
+        const backgroundCoverScale: number = Math.max(
+            width / AIRPLANE_BACKGROUND_WIDTH,
+            height / AIRPLANE_BACKGROUND_HEIGHT,
+        );
         this.backgroundSpriteNode?.setScale(backgroundCoverScale, backgroundCoverScale, 1);
-        /** 烟雾仅按屏幕宽度等比缩放，不向上铺满整个画面。 */
-        const fogWidthScale: number = width / FOG_TEXTURE_WIDTH;
-        /** 缩放后烟雾的实际显示高度。 */
-        const renderedFogHeight: number = FOG_TEXTURE_HEIGHT * fogWidthScale;
-        this.fogSpan = FOG_TEXTURE_WIDTH * fogWidthScale;
-        this.fogBottomY = -height / 2 + renderedFogHeight / 2;
-        this.fogOffset = Math.max(-this.fogSpan, Math.min(0, this.fogOffset));
-        this.fogNodes.forEach((fogNode: Node, fogIndex: number): void => {
-            fogNode.setScale(fogWidthScale, fogWidthScale, 1);
-            fogNode.setPosition(
-                this.fogOffset + fogIndex * this.fogSpan,
-                this.fogBottomY,
-                0,
-            );
-        });
     }
 
     /** 按当前画布大小排列四条 PSD 光带，并保持各边渐变朝向正确。 */
@@ -1312,7 +1301,7 @@ export class PlayableGameView extends Component {
         this.playNowNode?.getComponent(UITransform)?.setContentSize(431, 114);
     }
 
-    /** 重绘森林图片加载前使用的自适应后备背景。 */
+    /** 重绘飞机图片加载前使用的自适应后备背景。 */
     private redrawBackground(width: number, height: number): void {
         if (!this.backgroundGraphics) {
             return;
@@ -1369,8 +1358,8 @@ export class PlayableGameView extends Component {
         this.wheelNode.on(Node.EventType.TOUCH_MOVE, this.handleTraceMove, this);
         this.wheelNode.on(Node.EventType.TOUCH_END, this.handleTraceEnd, this);
         this.wheelNode.on(Node.EventType.TOUCH_CANCEL, this.handleTraceEnd, this);
-        this.downloadNode?.on(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
         this.installPanelNode?.on(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
+        this.gameplayPlayNowNode?.on(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
         this.playNowNode?.on(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
     }
 
@@ -1381,8 +1370,8 @@ export class PlayableGameView extends Component {
         this.wheelNode?.off(Node.EventType.TOUCH_MOVE, this.handleTraceMove, this);
         this.wheelNode?.off(Node.EventType.TOUCH_END, this.handleTraceEnd, this);
         this.wheelNode?.off(Node.EventType.TOUCH_CANCEL, this.handleTraceEnd, this);
-        this.downloadNode?.off(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
         this.installPanelNode?.off(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
+        this.gameplayPlayNowNode?.off(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
         this.playNowNode?.off(Node.EventType.TOUCH_END, this.handleDownloadRequest, this);
     }
 
@@ -1924,7 +1913,7 @@ export class PlayableGameView extends Component {
         if (!nextStep || !this.wheelNode) {
             this.isInputLocked = true;
             this.node.emit("playable-all-words-completed", this.errorCount);
-            this.showEndCard("completed");
+            this.showEndCard();
             return;
         }
 
@@ -1933,13 +1922,12 @@ export class PlayableGameView extends Component {
     }
 
     /** 显示品牌结束页并通知广告宿主试玩结束。 */
-    private showEndCard(reason: "completed" | "timeout"): void {
+    private showEndCard(): void {
         if (this.isEndCardVisible || !this.endCardNode) {
             return;
         }
 
         this.unschedule(this.handleGuideIdleTimeout);
-        this.unschedule(this.handleCountdownTick);
         this.correctSettlementGeneration += 1;
         this.hideGuideHand();
         this.clearPraiseAnimations();
@@ -1948,9 +1936,13 @@ export class PlayableGameView extends Component {
         this.isTracing = false;
         this.hideSelectionVisuals();
         this.promptNode && (this.promptNode.active = false);
-        this.clockNode && (this.clockNode.active = false);
         this.boardNode && (this.boardNode.active = false);
         this.wheelNode && (this.wheelNode.active = false);
+        this.gameplayLogoNode && (this.gameplayLogoNode.active = false);
+        this.gameplayPlayNowNode && (this.gameplayPlayNowNode.active = false);
+        this.airplaneTrailNodes.forEach((trailNode: Node): void => {
+            trailNode.active = false;
+        });
         this.endCardNode.active = true;
         this.endCardNode.setSiblingIndex(this.layoutRoot!.children.length - 1);
 
@@ -1975,7 +1967,7 @@ export class PlayableGameView extends Component {
             .start();
         this.startPlayNowAnimation();
         notifyPlayableGameEnd();
-        this.node.emit("playable-end-card-shown", reason, this.errorCount);
+        this.node.emit("playable-end-card-shown", "completed", this.errorCount);
     }
 
     /** 循环播放结束页 Play Now 按钮放大缩小动画。 */
@@ -1983,17 +1975,17 @@ export class PlayableGameView extends Component {
         if (!this.playNowNode) {
             return;
         }
+        this.startBreathingAnimation(this.playNowNode);
+    }
 
+    /** 循环播放指定按钮的放大缩小呼吸动画。 */
+    private startBreathingAnimation(targetNode: Node): void {
         /** 当前方向布局赋予按钮的基础缩放。 */
-        const baseScale: Vec3 = this.playNowNode.scale.clone();
+        const baseScale: Vec3 = targetNode.scale.clone();
         /** 按钮呼吸动画的放大缩放。 */
-        const enlargedScale: Vec3 = new Vec3(
-            baseScale.x * 1.09,
-            baseScale.y * 1.09,
-            1,
-        );
-        Tween.stopAllByTarget(this.playNowNode);
-        tween(this.playNowNode)
+        const enlargedScale: Vec3 = new Vec3(baseScale.x * 1.09, baseScale.y * 1.09, 1);
+        Tween.stopAllByTarget(targetNode);
+        tween(targetNode)
             .to(0.55, { scale: enlargedScale }, { easing: "sineInOut" })
             .to(0.55, { scale: baseScale }, { easing: "sineInOut" })
             .union()
@@ -2070,18 +2062,14 @@ export class PlayableGameView extends Component {
         this.guideHandNode.active = false;
     }
 
-    /** 首次有效交互时启动背景音乐和三十秒倒计时。 */
+    /** 首次有效交互时启动背景音乐，本版本不限制游戏时间。 */
     private startGameplayFromInteraction(): void {
         if (this.hasStartedByInteraction || this.isEndCardVisible) {
             return;
         }
 
         this.hasStartedByInteraction = true;
-        this.remainingSeconds = PLAYABLE_CONFIG.countdownSeconds;
-        this.updateClockLabel();
         this.playBackgroundMusic();
-        this.unschedule(this.handleCountdownTick);
-        this.schedule(this.handleCountdownTick, 1);
     }
 
     /** 在浏览器用户手势已经发生后播放循环背景音乐。 */
@@ -2101,50 +2089,6 @@ export class PlayableGameView extends Component {
             return;
         }
         this.effectAudioSource.playOneShot(clip, volumeScale);
-    }
-
-    /** 每秒推进倒计时，最后五秒抖动并在归零时进入最终页。 */
-    private handleCountdownTick(): void {
-        if (this.isEndCardVisible) {
-            this.unschedule(this.handleCountdownTick);
-            return;
-        }
-
-        this.remainingSeconds = Math.max(0, this.remainingSeconds - 1);
-        this.updateClockLabel();
-        if (this.remainingSeconds <= 5 && !this.hasStartedClockWarning) {
-            this.startClockWarningAnimation();
-        }
-        if (this.remainingSeconds > 0) {
-            return;
-        }
-        this.unschedule(this.handleCountdownTick);
-        this.showEndCard("timeout");
-    }
-
-    /** 将最新倒计时秒数写入闹钟数字。 */
-    private updateClockLabel(): void {
-        if (this.clockLabel) {
-            this.clockLabel.string = String(this.remainingSeconds);
-        }
-    }
-
-    /** 循环大幅抖动最后五秒的闹钟图标。 */
-    private startClockWarningAnimation(): void {
-        if (!this.clockNode) {
-            return;
-        }
-        this.hasStartedClockWarning = true;
-        /** 抖动开始时闹钟所在的响应式基准位置。 */
-        const basePosition: Vec3 = this.clockNode.position.clone();
-        Tween.stopAllByTarget(this.clockNode);
-        tween(this.clockNode)
-            .to(0.06, { position: new Vec3(basePosition.x - 13, basePosition.y + 6, 0), scale: new Vec3(1.15, 1.15, 1) })
-            .to(0.06, { position: new Vec3(basePosition.x + 13, basePosition.y - 6, 0), scale: new Vec3(1.15, 1.15, 1) })
-            .to(0.06, { position: basePosition, scale: Vec3.ONE })
-            .union()
-            .repeatForever()
-            .start();
     }
 
     /** 以指定颜色闪烁一次画面四周。 */
@@ -2222,9 +2166,11 @@ export class PlayableGameView extends Component {
         this.startGuideHandAnimation(this.currentGuideTargetWord);
     }
 
-    /** 启动下载按钮，并在开局一秒无操作后显示文案和手势引导。 */
+    /** 启动 Play Now，并在一秒无操作后显示引导。 */
     private startInitialAnimations(): void {
-        this.startDownloadIconAnimation();
+        if (this.gameplayPlayNowNode) {
+            this.startBreathingAnimation(this.gameplayPlayNowNode);
+        }
         if (this.promptNode) {
             this.promptNode.active = false;
             /** 首屏引导文案透明度组件。 */

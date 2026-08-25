@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "7e15cfc3-1df8-4899-bcbf-c6fee078343c",
+  "uuid": "63be678a-b84a-45fb-9502-8e5782d2e01f",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "7e15cfc3-1df8-4899-bcbf-c6fee078343c@6c48a",
-      "displayName": "countdown-clock",
+      "uuid": "63be678a-b84a-45fb-9502-8e5782d2e01f@6c48a",
+      "displayName": "airplane-trail-4",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "7e15cfc3-1df8-4899-bcbf-c6fee078343c",
+        "imageUuidOrDatabaseUri": "63be678a-b84a-45fb-9502-8e5782d2e01f",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,8 +34,8 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "7e15cfc3-1df8-4899-bcbf-c6fee078343c@f9941",
-      "displayName": "countdown-clock",
+      "uuid": "63be678a-b84a-45fb-9502-8e5782d2e01f@f9941",
+      "displayName": "airplane-trail-4",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
@@ -46,10 +46,10 @@
         "offsetY": 0,
         "trimX": 0,
         "trimY": 0,
-        "width": 102,
-        "height": 101,
-        "rawWidth": 102,
-        "rawHeight": 101,
+        "width": 451,
+        "height": 171,
+        "rawWidth": 451,
+        "rawHeight": 171,
         "borderTop": 0,
         "borderBottom": 0,
         "borderLeft": 0,
@@ -59,22 +59,19 @@
         "pivotX": 0.5,
         "pivotY": 0.5,
         "meshType": 0,
-        "isUuid": true,
-        "imageUuidOrDatabaseUri": "7e15cfc3-1df8-4899-bcbf-c6fee078343c@6c48a",
-        "atlasUuid": "",
         "vertices": {
           "rawPosition": [
-            -51,
-            -50.5,
+            -225.5,
+            -85.5,
             0,
-            51,
-            -50.5,
+            225.5,
+            -85.5,
             0,
-            -51,
-            50.5,
+            -225.5,
+            85.5,
             0,
-            51,
-            50.5,
+            225.5,
+            85.5,
             0
           ],
           "indexes": [
@@ -87,12 +84,12 @@
           ],
           "uv": [
             0,
-            101,
-            102,
-            101,
+            171,
+            451,
+            171,
             0,
             0,
-            102,
+            451,
             0
           ],
           "nuv": [
@@ -106,16 +103,19 @@
             1
           ],
           "minPos": [
-            -51,
-            -50.5,
+            -225.5,
+            -85.5,
             0
           ],
           "maxPos": [
-            51,
-            50.5,
+            225.5,
+            85.5,
             0
           ]
-        }
+        },
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "63be678a-b84a-45fb-9502-8e5782d2e01f@6c48a",
+        "atlasUuid": ""
       },
       "ver": "1.0.12",
       "imported": true,
@@ -129,6 +129,6 @@
     "type": "sprite-frame",
     "hasAlpha": true,
     "fixAlphaTransparencyArtifacts": false,
-    "redirect": "7e15cfc3-1df8-4899-bcbf-c6fee078343c@6c48a"
+    "redirect": "63be678a-b84a-45fb-9502-8e5782d2e01f@6c48a"
   }
 }

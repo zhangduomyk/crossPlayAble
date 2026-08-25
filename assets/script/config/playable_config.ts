@@ -36,8 +36,6 @@ export interface PlayableConfig {
     readonly endCardButtonText: string;
     /** 下载按钮文案。 */
     readonly downloadButtonText: string;
-    /** 首次互动后启动的倒计时秒数。 */
-    readonly countdownSeconds: number;
     /** 开局未操作时显示首次引导的延迟秒数。 */
     readonly initialGuideDelaySeconds: number;
     /** 游戏中停顿后再次显示引导的延迟秒数。 */
@@ -65,22 +63,21 @@ export const PLAYABLE_CONFIG: PlayableConfig = {
     introPrompt: "Swipe to form words!",
     endCardButtonText: "Play Now",
     downloadButtonText: "Install",
-    countdownSeconds: 30,
     initialGuideDelaySeconds: 1,
     idleGuideDelaySeconds: 2,
     storeRedirectStepIndex: -1,
     completedWords: [],
     bonusWords: [
-        "RATES", "ASTER", "TASER", "SATYR", "RESAT", "TARES", "RESTS",
-        "TEAR", "STAR", "REST", "EARS", "ARTS", "RATS", "TARS", "ERAS", "TARE", "TSAR", "ARSE",
-        "ARE", "ERA", "EAT", "TEA", "SEA", "ART", "RAT", "TAR", "SAT", "SAE", "ETA",
+        "PANEL", "PENAL", "PLENA",
+        "PLAN", "LEAP", "PALE", "PANE", "PLEA", "PEAL", "NAPE", "NEAP", "PEAN", "ELAN",
+        "PAN", "PEN", "PEA", "PAL", "APE", "NAP", "ALP", "ANE", "NAE",
     ],
     wordSteps: [
-        { word: "EAR", wheelLetters: "ESTRA", praise: "Nice" },
-        { word: "EAST", wheelLetters: "ESTRA", praise: "Brilliant" },
-        { word: "SEAT", wheelLetters: "ESTRA", praise: "Brilliant" },
-        { word: "RATE", wheelLetters: "ESTRA", praise: "Brilliant" },
-        { word: "TEARS", wheelLetters: "ESTRA", praise: "Brilliant" },
-        { word: "STARE", wheelLetters: "ESTRA", praise: "Spectacular" },
+        { word: "LAP", wheelLetters: "PLANE", praise: "Nice" },
+        { word: "ALE", wheelLetters: "PLANE", praise: "Brilliant" },
+        { word: "LEA", wheelLetters: "PLANE", praise: "Brilliant" },
+        { word: "LANE", wheelLetters: "PLANE", praise: "Brilliant" },
+        { word: "LEAN", wheelLetters: "PLANE", praise: "Brilliant" },
+        { word: "PLANE", wheelLetters: "PLANE", praise: "Spectacular" },
     ],
 };
