@@ -34,7 +34,7 @@ export class LetterWheelView extends Component {
 
             /** 当前字母相对圆心的弧度。 */
             const angle: number = Math.PI / 2
-                + letterIndex * Math.PI * 2 / letterList.length;
+                - letterIndex * Math.PI * 2 / letterList.length;
             /** 当前字母在字盘中的位置。 */
             const letterPosition: Vec3 = new Vec3(
                 Math.cos(angle) * this.letterRadius,

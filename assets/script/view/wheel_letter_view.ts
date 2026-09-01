@@ -17,7 +17,7 @@ const { ccclass, property } = _decorator;
 /** 字盘单个字母的可视化组件。 */
 @ccclass("WheelLetterView")
 export class WheelLetterView extends Component {
-    /** 蓝色选中圆节点。 */
+    /** 青绿色选中圆节点。 */
     @property(Node)
     public highlightNode: Node | null = null;
 
@@ -40,17 +40,17 @@ export class WheelLetterView extends Component {
         }
     }
 
-    /** 配置深绿色选中圆 Sprite，并关闭未稳定进入渲染队列的矢量方案。 */
+    /** 配置青绿色选中圆 Sprite，并关闭未稳定进入渲染队列的矢量方案。 */
     private ensureHighlightCircle(): void {
         if (!this.highlightNode) {
             return;
         }
 
-        /** 蓝色选中圆图片组件。 */
+        /** 青绿色选中圆图片组件。 */
         const highlightSprite: Sprite | null = this.highlightNode.getComponent(Sprite);
         if (highlightSprite) {
             highlightSprite.enabled = true;
-            /** 选中圆资源本身已包含需求中的深绿色，保持原始颜色。 */
+            /** 选中圆资源本身已包含 PSD 青绿色，保持原始颜色。 */
             highlightSprite.color = new Color(255, 255, 255, 255);
             highlightSprite.type = Sprite.Type.SIMPLE;
             highlightSprite.sizeMode = Sprite.SizeMode.CUSTOM;

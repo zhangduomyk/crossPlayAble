@@ -40,6 +40,8 @@ export interface PlayableConfig {
     readonly initialGuideDelaySeconds: number;
     /** 游戏中停顿后再次显示引导的延迟秒数。 */
     readonly idleGuideDelaySeconds: number;
+    /** 首次交互后开始计算的试玩倒计时秒数。 */
+    readonly countdownSeconds: number;
     /** 完成该步骤后立即触发商店跳转；负数表示仅由下载入口触发。 */
     readonly storeRedirectStepIndex: number;
     /** 开局已经填入棋盘的单词。 */
@@ -65,19 +67,21 @@ export const PLAYABLE_CONFIG: PlayableConfig = {
     downloadButtonText: "Install",
     initialGuideDelaySeconds: 1,
     idleGuideDelaySeconds: 2,
+    countdownSeconds: 30,
     storeRedirectStepIndex: -1,
     completedWords: [],
     bonusWords: [
-        "PANEL", "PENAL", "PLENA",
-        "PLAN", "LEAP", "PALE", "PANE", "PLEA", "PEAL", "NAPE", "NEAP", "PEAN", "ELAN",
-        "PAN", "PEN", "PEA", "PAL", "APE", "NAP", "ALP", "ANE", "NAE",
+        "RUMES", "MURES",
+        "MEMS", "MUMS", "MUSE", "MEUS", "REMS", "RUME", "SMUR", "RUMS",
+        "USE", "RUE", "REM", "RUM", "ERS", "SER", "SUE", "SUR",
     ],
     wordSteps: [
-        { word: "LAP", wheelLetters: "PLANE", praise: "Nice" },
-        { word: "ALE", wheelLetters: "PLANE", praise: "Brilliant" },
-        { word: "LEA", wheelLetters: "PLANE", praise: "Brilliant" },
-        { word: "LANE", wheelLetters: "PLANE", praise: "Brilliant" },
-        { word: "LEAN", wheelLetters: "PLANE", praise: "Brilliant" },
-        { word: "PLANE", wheelLetters: "PLANE", praise: "Spectacular" },
+        { word: "SUM", wheelLetters: "SUMMER", praise: "Nice" },
+        { word: "RES", wheelLetters: "SUMMER", praise: "Brilliant" },
+        { word: "SURE", wheelLetters: "SUMMER", praise: "Brilliant" },
+        { word: "USER", wheelLetters: "SUMMER", praise: "Brilliant" },
+        { word: "RUSE", wheelLetters: "SUMMER", praise: "Brilliant" },
+        { word: "MUSER", wheelLetters: "SUMMER", praise: "Brilliant" },
+        { word: "SUMMER", wheelLetters: "SUMMER", praise: "Spectacular" },
     ],
 };
