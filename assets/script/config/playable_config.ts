@@ -2,7 +2,7 @@
 export interface WordStepConfig {
     /** 玩家需要拼出的目标单词。 */
     readonly word: string;
-    /** 字盘从十二点方向开始逆时针排列的字母。 */
+    /** 字盘从十二点方向开始顺时针排列的字母，保留重复字符。 */
     readonly wheelLetters: string;
     /** 正确完成后展示的鼓励词。 */
     readonly praise: string;
@@ -40,9 +40,9 @@ export interface PlayableConfig {
     readonly initialGuideDelaySeconds: number;
     /** 游戏中停顿后再次显示引导的延迟秒数。 */
     readonly idleGuideDelaySeconds: number;
-    /** 首次交互后开始计算的试玩倒计时秒数。 */
+    /** 兼容旧版的倒计时配置；零表示本版不启用倒计时。 */
     readonly countdownSeconds: number;
-    /** 完成该步骤后立即触发商店跳转；负数表示仅由下载入口触发。 */
+    /** 自动跳转对应的已完成目标词零基序号；一表示累计完成两个目标词。 */
     readonly storeRedirectStepIndex: number;
     /** 开局已经填入棋盘的单词。 */
     readonly completedWords: readonly string[];
@@ -65,23 +65,22 @@ export const PLAYABLE_CONFIG: PlayableConfig = {
     introPrompt: "Swipe to form words!",
     endCardButtonText: "Play Now",
     downloadButtonText: "Install",
-    initialGuideDelaySeconds: 1,
-    idleGuideDelaySeconds: 2,
-    countdownSeconds: 30,
-    storeRedirectStepIndex: -1,
+    initialGuideDelaySeconds: 0.3,
+    idleGuideDelaySeconds: 3,
+    countdownSeconds: 0,
+    storeRedirectStepIndex: 1,
     completedWords: [],
     bonusWords: [
-        "RUMES", "MURES",
-        "MEMS", "MUMS", "MUSE", "MEUS", "REMS", "RUME", "SMUR", "RUMS",
-        "USE", "RUE", "REM", "RUM", "ERS", "SER", "SUE", "SUR",
+        "EROS", "ORES", "OSES", "REOS",
+        "ERS", "ESS", "OES", "ORE", "ORS", "OSE", "REO", "RES", "ROE", "SER",
     ],
     wordSteps: [
-        { word: "SUM", wheelLetters: "SUMMER", praise: "Nice" },
-        { word: "RES", wheelLetters: "SUMMER", praise: "Brilliant" },
-        { word: "SURE", wheelLetters: "SUMMER", praise: "Brilliant" },
-        { word: "USER", wheelLetters: "SUMMER", praise: "Brilliant" },
-        { word: "RUSE", wheelLetters: "SUMMER", praise: "Brilliant" },
-        { word: "MUSER", wheelLetters: "SUMMER", praise: "Brilliant" },
-        { word: "SUMMER", wheelLetters: "SUMMER", praise: "Spectacular" },
+        { word: "ROSES", wheelLetters: "ROSES", praise: "Spectacular" },
+        { word: "SORES", wheelLetters: "ROSES", praise: "Spectacular" },
+        { word: "ROES", wheelLetters: "ROSES", praise: "Spectacular" },
+        { word: "SERS", wheelLetters: "ROSES", praise: "Spectacular" },
+        { word: "ROSE", wheelLetters: "ROSES", praise: "Spectacular" },
+        { word: "SORE", wheelLetters: "ROSES", praise: "Spectacular" },
+        { word: "SOS", wheelLetters: "ROSES", praise: "Spectacular" },
     ],
 };

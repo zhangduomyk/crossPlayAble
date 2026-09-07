@@ -6,9 +6,12 @@ import {
     Label,
     Node,
     Sprite,
+    SpriteFrame,
     Tween,
+    UITransform,
     Vec3,
     tween,
+    resources,
 } from "cc";
 
 /** Cocos 装饰器工具。 */
@@ -27,6 +30,9 @@ export class WheelLetterView extends Component {
 
     /** 当前字母在字盘配置中的索引。 */
     public letterIndex: number = -1;
+
+    /** 当前选中字母圆是否已经开始加载本版 PSD 素材。 */
+    private hasRequestedSelectionFrame: boolean = false;
 
     /** 配置字母内容、索引和圆周位置。 */
     public configure(letter: string, letterIndex: number, position: Vec3): void {
@@ -49,11 +55,27 @@ export class WheelLetterView extends Component {
         /** 青绿色选中圆图片组件。 */
         const highlightSprite: Sprite | null = this.highlightNode.getComponent(Sprite);
         if (highlightSprite) {
+            this.highlightNode.getComponent(UITransform)?.setContentSize(72, 72);
             highlightSprite.enabled = true;
             /** 选中圆资源本身已包含 PSD 青绿色，保持原始颜色。 */
             highlightSprite.color = new Color(255, 255, 255, 255);
             highlightSprite.type = Sprite.Type.SIMPLE;
             highlightSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+            if (!this.hasRequestedSelectionFrame) {
+                this.hasRequestedSelectionFrame = true;
+                resources.load(
+                    "playable/psd/letter-selected/spriteFrame",
+                    SpriteFrame,
+                    (error: Error | null, selectionFrame: SpriteFrame): void => {
+                        if (error || !highlightSprite.isValid) {
+                            return;
+                        }
+                        highlightSprite.spriteFrame = selectionFrame;
+                        highlightSprite.color = new Color(255, 255, 255, 255);
+                        highlightSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+                    },
+                );
+            }
         }
         /** 旧矢量选中圆组件。 */
         const highlightGraphics: Graphics | null = this.highlightNode.getComponent(Graphics);
