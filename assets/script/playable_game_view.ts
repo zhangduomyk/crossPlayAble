@@ -1818,7 +1818,10 @@ export class PlayableGameView extends Component {
         /** 字格在单词中的字母索引。 */
         const letterIndex: number = wordLayout.cells.findIndex((cell: CrosswordCellCoordinate): boolean => this.getCrosswordCellKey(cell) === key);
         slot.letterLabel.string = wordLayout.word[letterIndex];
-        slot.letterLabel.color = SELECTION_COLOR;
+        slot.letterLabel.color = new Color(255, 255, 255, 255);
+        if (slot.background) {
+            this.setSlotColor(slot.background, FILLED_SLOT_COLOR);
+        }
         this.hasCompletedIntroGuide = true;
         this.hideGuideHand();
         this.promptNode && (this.promptNode.active = false);
